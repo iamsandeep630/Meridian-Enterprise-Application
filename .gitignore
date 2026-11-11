@@ -46,6 +46,8 @@ venv.bak/
 *.db-journal
 *.sqlite3
 data/*.db
+!backend/database/shopmart.db
+!backend/database/seed_data.sql
 
 # Knowledge Base Built Artifacts (Regenerable)
 knowledge_base/data/knowledge.index

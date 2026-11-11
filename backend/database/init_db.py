@@ -8,8 +8,42 @@ from .models import (
     EmployeeMeeting, EmployeeEmail, LeaveRequest, CompanyProject, JiraTicket
 )
 
+"""
+Database Initialization & Migrations
+"""
+from pathlib import Path
+from .connection import engine, Base, SessionLocal
+from .catalog_sync import apply_catalog_config
+from .models import (
+    User, Product, Invoice, ChatSession, ChatMessage,
+    EmployeeMeeting, EmployeeEmail, LeaveRequest, CompanyProject, JiraTicket
+)
+
 def init_db():
+    seed_sql_path = Path(__file__).resolve().parent / "seed_data.sql"
+
+    # 1. If database is brand new or empty, pre-populate from seed_data.sql
+    with engine.connect() as conn:
+        raw_conn = conn.connection
+        cursor = raw_conn.cursor()
+        cursor.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='products'")
+        has_products = cursor.fetchone()[0] > 0
+        prod_count = 0
+        if has_products:
+            cursor.execute("SELECT count(*) FROM products")
+            prod_count = cursor.fetchone()[0]
+
+        if prod_count == 0 and seed_sql_path.exists():
+            print("[Database] Empty database detected. Seeding from seed_data.sql...")
+            with open(seed_sql_path, "r", encoding="utf-8") as f:
+                raw_conn.executescript(f.read())
+            raw_conn.commit()
+            print("[Database] Successfully seeded database from seed_data.sql!")
+
+    # 2. Ensure all tables are created
     Base.metadata.create_all(bind=engine)
+
+    # 3. Apply schema migrations if necessary
     with engine.connect() as conn:
         import sqlite3
         raw_conn = conn.connection
@@ -39,7 +73,7 @@ def init_db():
                 cursor.execute(f"ALTER TABLE products ADD COLUMN {col_name} {col_def}")
         raw_conn.commit()
 
-    # Apply configuration from catalog_config.json
+    # 4. Apply configuration from catalog_config.json & verify default users
     db = SessionLocal()
     try:
         apply_catalog_config(db)
