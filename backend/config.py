@@ -15,6 +15,7 @@ load_dotenv(BASE_DIR / ".env")
 # Server Config
 PORT = int(os.getenv("PORT", "8001"))
 HOST = os.getenv("HOST", "0.0.0.0")
+PUBLIC_APP_URL = (os.getenv("PUBLIC_APP_URL") or os.getenv("ENTERPRISE_APP_URL") or f"http://localhost:{PORT}").strip().rstrip("/")
 
 # Security & JWT
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-in-production")

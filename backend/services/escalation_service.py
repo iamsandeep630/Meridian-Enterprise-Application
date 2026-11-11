@@ -17,6 +17,11 @@ except ImportError:
     import meshcentral_service
     import jira_service
 
+try:
+    from config import PUBLIC_APP_URL
+except ImportError:
+    PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", "http://localhost:8001").rstrip("/")
+
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -213,10 +218,10 @@ async def get_dashboard_tickets() -> list[dict]:
             for c_id, conv in conversation_store.items():
                 if (t.get("jiraKey") and conv.get("jiraKey") == t.get("jiraKey")) or (t.get("id") and conv.get("ticketId") == t.get("id")):
                     t["conversationId"] = c_id
-                    t["chatLink"] = f"http://localhost:8001/support/chat/{c_id}"
+                    t["chatLink"] = f"{PUBLIC_APP_URL}/support/chat/{c_id}"
                     break
         elif not t.get("chatLink"):
-            t["chatLink"] = f"http://localhost:8001/support/chat/{cid}"
+            t["chatLink"] = f"{PUBLIC_APP_URL}/support/chat/{cid}"
 
         if t.get("sharingLink") and not t.get("linkExpiresAt") and t.get("createdAt"):
             try:
@@ -257,7 +262,7 @@ async def escalate_session(
     cid = str(session_id)
     now = datetime.utcnow()
     now_iso = now.isoformat() + "Z"
-    chat_link = f"http://localhost:8001/support/chat/{cid}"
+    chat_link = f"{PUBLIC_APP_URL}/support/chat/{cid}"
 
     # Part 2 & Part 3: Evaluate LLM classification with Python safety net fallback
     if requires_remote_desktop is False:
@@ -416,7 +421,7 @@ async def create_remediation_ticket(
     cid = str(session_id)
     now = datetime.utcnow()
     now_iso = now.isoformat() + "Z"
-    chat_link = f"http://localhost:8001/support/chat/{cid}"
+    chat_link = f"{PUBLIC_APP_URL}/support/chat/{cid}"
 
     device_name = (device_info or {}).get("name", "AVDGLS5-4")
     device_os = (device_info or {}).get("os", "Microsoft Windows 11 Enterprise")

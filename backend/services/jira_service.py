@@ -218,7 +218,8 @@ def create_jira_issue(
         ])
 
     if not chat_link and session_id:
-        chat_link = f"http://localhost:8001/support/chat/{session_id}"
+        public_url = os.getenv("PUBLIC_APP_URL") or os.getenv("ENTERPRISE_APP_URL") or "http://localhost:8001"
+        chat_link = f"{public_url.rstrip('/')}/support/chat/{session_id}"
 
     if sharing_link:
         desc_parts.extend([
