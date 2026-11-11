@@ -1,8 +1,9 @@
 """
 Tests for Catalog Sync and Protected Admin Reload Endpoint
 """
-import pytest
+import unittest
 import json
+import tempfile
 from pathlib import Path
 from fastapi.testclient import TestClient
 import sys
@@ -20,98 +21,105 @@ from database import SessionLocal, Product, init_db
 from database.catalog_sync import apply_catalog_config
 from config import ADMIN_SYNC_KEY
 
-client = TestClient(app)
 
-@pytest.fixture(autouse=True)
-def setup_db():
-    init_db()
+class TestCatalogReload(unittest.TestCase):
 
-def test_reload_missing_auth():
-    """Verify endpoint rejects requests without X-Sync-Key with 401."""
-    res = client.post("/api/admin/catalog/reload", json={})
-    assert res.status_code == 401
-    assert "Unauthorized" in res.json().get("detail", "")
+    def setUp(self):
+        init_db()
+        self.client = TestClient(app)
 
-def test_reload_invalid_auth():
-    """Verify endpoint rejects requests with invalid X-Sync-Key with 401."""
-    res = client.post(
-        "/api/admin/catalog/reload",
-        json={},
-        headers={"X-Sync-Key": "incorrect-secret-key"}
-    )
-    assert res.status_code == 401
+    def test_reload_missing_auth(self):
+        """Verify endpoint rejects requests without X-Sync-Key with 401."""
+        res = self.client.post("/api/admin/catalog/reload", json={})
+        self.assertEqual(res.status_code, 401)
+        self.assertIn("Unauthorized", res.json().get("detail", ""))
 
-def test_reload_invalid_json():
-    """Verify endpoint rejects invalid JSON content with 400."""
-    res = client.post(
-        "/api/admin/catalog/reload",
-        json={"content": "not-valid-json-string{}"},
-        headers={"X-Sync-Key": ADMIN_SYNC_KEY}
-    )
-    assert res.status_code == 400
-    assert "Invalid JSON content" in res.json().get("detail", "")
+    def test_reload_invalid_auth(self):
+        """Verify endpoint rejects requests with invalid X-Sync-Key with 401."""
+        res = self.client.post(
+            "/api/admin/catalog/reload",
+            json={},
+            headers={"X-Sync-Key": "incorrect-secret-key"}
+        )
+        self.assertEqual(res.status_code, 401)
 
-def test_reload_success_and_products_updated():
-    """Verify reload applies show_in_invoice_dropdown=True and GET /products reflects it."""
-    # 1. Update to True
-    payload = {
-        "content": {
-            "products": {
-                "4K Webcam Pro": {
-                    "show_in_invoice_dropdown": True
+    def test_reload_invalid_json(self):
+        """Verify endpoint rejects invalid JSON content with 400."""
+        res = self.client.post(
+            "/api/admin/catalog/reload",
+            json={"content": "not-valid-json-string{}"},
+            headers={"X-Sync-Key": ADMIN_SYNC_KEY}
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Invalid JSON content", res.json().get("detail", ""))
+
+    def test_reload_success_and_products_updated(self):
+        """Verify reload applies show_in_invoice_dropdown=True and GET /products reflects it."""
+        # 1. Update to True
+        payload = {
+            "content": {
+                "products": {
+                    "4K Webcam Pro": {
+                        "show_in_invoice_dropdown": True
+                    }
                 }
             }
         }
-    }
-    res = client.post(
-        "/api/admin/catalog/reload",
-        json=payload,
-        headers={"X-Sync-Key": ADMIN_SYNC_KEY}
-    )
-    assert res.status_code == 200
-    assert res.json().get("success") is True
+        res = self.client.post(
+            "/api/admin/catalog/reload",
+            json=payload,
+            headers={"X-Sync-Key": ADMIN_SYNC_KEY}
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json().get("success"))
 
-    # 2. Check GET /products
-    p_res = client.get("/products")
-    assert p_res.status_code == 200
-    prods = p_res.json()
-    webcam = next((p for p in prods if p["name"] == "4K Webcam Pro"), None)
-    assert webcam is not None
-    assert webcam["show_in_invoice_dropdown"] == 1
+        # 2. Check GET /products
+        p_res = self.client.get("/products")
+        self.assertEqual(p_res.status_code, 200)
+        prods = p_res.json()
+        webcam = next((p for p in prods if p["name"] == "4K Webcam Pro"), None)
+        self.assertIsNotNone(webcam)
+        self.assertEqual(webcam["show_in_invoice_dropdown"], 1)
 
-    # 3. Reset back to False
-    reset_payload = {
-        "content": {
-            "products": {
-                "4K Webcam Pro": {
-                    "show_in_invoice_dropdown": False
+        # 3. Reset back to False
+        reset_payload = {
+            "content": {
+                "products": {
+                    "4K Webcam Pro": {
+                        "show_in_invoice_dropdown": False
+                    }
                 }
             }
         }
-    }
-    res_reset = client.post(
-        "/api/admin/catalog/reload",
-        json=reset_payload,
-        headers={"X-Sync-Key": ADMIN_SYNC_KEY}
-    )
-    assert res_reset.status_code == 200
+        res_reset = self.client.post(
+            "/api/admin/catalog/reload",
+            json=reset_payload,
+            headers={"X-Sync-Key": ADMIN_SYNC_KEY}
+        )
+        self.assertEqual(res_reset.status_code, 200)
 
-    # 4. Verify reset
-    p_res2 = client.get("/products")
-    prods2 = p_res2.json()
-    webcam2 = next((p for p in prods2 if p["name"] == "4K Webcam Pro"), None)
-    assert webcam2 is not None
-    assert webcam2["show_in_invoice_dropdown"] == 0
+        # 4. Verify reset
+        p_res2 = self.client.get("/products")
+        self.assertEqual(p_res2.status_code, 200)
+        prods2 = p_res2.json()
+        webcam2 = next((p for p in prods2 if p["name"] == "4K Webcam Pro"), None)
+        self.assertIsNotNone(webcam2)
+        self.assertEqual(webcam2["show_in_invoice_dropdown"], 0)
 
-def test_catalog_sync_resilience_to_invalid_file(tmp_path):
-    """Verify apply_catalog_config handles corrupt JSON without crashing."""
-    bad_file = tmp_path / "bad_catalog.json"
-    bad_file.write_text("{{corrupted-json}}")
+    def test_catalog_sync_resilience_to_invalid_file(self):
+        """Verify apply_catalog_config handles corrupt JSON without crashing."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            bad_file = Path(tmp_dir) / "bad_catalog.json"
+            bad_file.write_text("{{corrupted-json}}", encoding="utf-8")
 
-    db = SessionLocal()
-    try:
-        res = apply_catalog_config(db, config_path=bad_file)
-        assert res["status"] == "warning"
-        assert res["reason"] == "invalid_json"
-    finally:
-        db.close()
+            db = SessionLocal()
+            try:
+                res = apply_catalog_config(db, config_path=bad_file)
+                self.assertEqual(res["status"], "warning")
+                self.assertEqual(res["reason"], "invalid_json")
+            finally:
+                db.close()
+
+
+if __name__ == "__main__":
+    unittest.main()

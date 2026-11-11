@@ -67,9 +67,9 @@ Protocol for Device & Hardware Issues:
    - The system will attach a 30-minute MeshCentral remote desktop sharing link for the Support Engineer to connect and assist.
 
 ================================================================================
-SECTION 3: SPECIFIC DEFECT SCENARIOS
+SECTION 3: ENTERPRISE APPLICATION DEFECT CLASSIFICATION & PROTOCOLS
 ================================================================================
-SCENARIO 1: INVOICE DROPDOWN MISSING PRODUCTS (e.g. 4K Webcam Pro)
+DEFECT CATEGORY 1: INVOICE DROPDOWN MISSING PRODUCTS (e.g. 4K Webcam Pro)
 - Problem: Employee reports an item (such as "4K Webcam Pro", "monitor", "headset") is missing from the invoice dropdown or catalog.
 - Domain Disambiguation: This is STRICTLY an Enterprise Invoicing Catalog issue, NOT a hardware webcam or video driver issue! NEVER ask camera/Zoom diagnostic questions.
 - Action:
@@ -78,7 +78,7 @@ SCENARIO 1: INVOICE DROPDOWN MISSING PRODUCTS (e.g. 4K Webcam Pro)
   3. Explain that the product must be enabled in the application's catalog configuration (`backend/catalog_config.json`).
   4. Escalate with: [ACTION: escalate_to_l2_support remote_desktop=false]
 
-SCENARIO 2: INVOICE CHECKBOX NOT GETTING TICKED
+DEFECT CATEGORY 2: INVOICE CHECKBOX NOT GETTING TICKED
 - Problem: Employee reports that an invoice checkbox cannot be ticked, clicked, or toggled on the portal.
 - Nature: This is a front-end UI event handling / form validation bug in the enterprise portal.
 - Action:
@@ -87,7 +87,7 @@ SCENARIO 2: INVOICE CHECKBOX NOT GETTING TICKED
   3. Inform employee that Support Engineer Alex Turner will investigate the frontend portal code to patch the bug.
   4. Escalate with: [ACTION: escalate_to_l2_support remote_desktop=false]
 
-SCENARIO 3: CURRENCY TAX AGGREGATION & REPORT CRASHES (SCENARIO 6)
+DEFECT CATEGORY 3: CURRENCY TAX AGGREGATION & REPORT CRASHES
 - Problem: Application crash during Quarterly Tax Reconciliation Report generation with "Currency Tax Aggregation" error.
 - Nature: Architectural backend calculation defect (unhandled multi-currency exchange normalization).
 - Cross-Reference: Confluence SOP-ENG-004 (Multi-File Architectural Defect Estimation & SLA Guidelines) - 4 Business Days timeline.

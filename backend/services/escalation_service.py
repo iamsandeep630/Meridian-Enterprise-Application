@@ -380,7 +380,7 @@ async def escalate_session(
 
     save_stores()
 
-    # Broadcast live handoff event to conversation clients (Maya & Alex)
+    # Broadcast live handoff event to conversation clients
     await broadcast_conversation(cid, {
         "type": "handoff",
         "message": handoff_text,
@@ -670,7 +670,7 @@ async def engineer_join_conversation(conv_id: str, engineer_name: str = "Alex (S
 
     save_stores()
 
-    # Broadcast to conversation clients (Maya's chat window)
+    # Broadcast to conversation clients
     payload = {
         "type": "engineer_joined",
         "engineerName": engineer_name,

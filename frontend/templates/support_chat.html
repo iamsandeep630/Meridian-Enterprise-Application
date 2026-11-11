@@ -1011,13 +1011,15 @@
           return;
         }
 
-        // 5. Employee (Maya Sharma) User Message
+        // 5. Employee User Message
+        let empName = m.userName || m.sender || 'Employee';
+        const empInitial = (empName.charAt(0) || 'E').toUpperCase();
         const row = document.createElement('div');
         row.className = 'message-row message-incoming';
         row.innerHTML = `
-          <div class="msg-avatar msg-avatar-user">M</div>
+          <div class="msg-avatar msg-avatar-user">${escapeHtml(empInitial)}</div>
           <div class="msg-bubble-wrap">
-            <div class="msg-sender">Maya Sharma (Employee)</div>
+            <div class="msg-sender">${escapeHtml(empName)}</div>
             <div class="msg-bubble">${escapeHtml(contentStr)}</div>
           </div>
         `;
