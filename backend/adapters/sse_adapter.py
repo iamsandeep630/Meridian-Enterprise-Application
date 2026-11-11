@@ -15,3 +15,4 @@ class SSEBroadcasterAdapter(INotificationPort):
 
     async def broadcast_dashboard(self, payload: Dict[str, Any]) -> None:
         await broadcast_dashboard(payload)
+

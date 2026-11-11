@@ -29,3 +29,4 @@ class ITicketingPort(Protocol):
     def update_ticket(self, ticket_key: str, fields: Dict[str, Any]) -> bool:
         """Updates fields on an existing ticket."""
         ...
+

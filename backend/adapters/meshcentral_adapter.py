@@ -24,3 +24,4 @@ class MeshCentralAdapter(IRemoteRemediationPort):
 
     def create_sharing_link(self, device_id: str, duration_minutes: int = 30) -> Dict[str, Any]:
         return self._service.create_sharing_link(device_id=device_id, duration_minutes=duration_minutes)
+

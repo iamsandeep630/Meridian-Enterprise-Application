@@ -35,3 +35,4 @@ class Container:
     @classmethod
     def get_notification_port(cls) -> INotificationPort:
         return cls._notification_port
+

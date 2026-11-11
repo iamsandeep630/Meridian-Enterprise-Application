@@ -16,3 +16,4 @@ class INotificationPort(Protocol):
     async def broadcast_dashboard(self, payload: Dict[str, Any]) -> None:
         """Broadcasts a live update to listening support engineer dashboards."""
         ...
+

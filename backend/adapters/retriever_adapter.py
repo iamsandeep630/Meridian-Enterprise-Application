@@ -15,3 +15,4 @@ class HybridRetrieverAdapter(IKnowledgeBasePort):
 
     def search(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         return self._retriever.search(query=query, top_k=top_k)
+

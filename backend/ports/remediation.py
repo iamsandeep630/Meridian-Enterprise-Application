@@ -24,3 +24,4 @@ class IRemoteRemediationPort(Protocol):
     def create_sharing_link(self, device_id: str, duration_minutes: int = 30) -> Dict[str, Any]:
         """Generates an ephemeral, time-bounded remote desktop access link."""
         ...
+

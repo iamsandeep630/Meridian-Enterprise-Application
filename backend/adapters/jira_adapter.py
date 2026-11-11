@@ -38,3 +38,4 @@ class JiraCloudAdapter(ITicketingPort):
 
     def update_ticket(self, ticket_key: str, fields: Dict[str, Any]) -> bool:
         return self._service.update_ticket(ticket_key, fields)
+

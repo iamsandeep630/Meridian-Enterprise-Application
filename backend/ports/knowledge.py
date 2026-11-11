@@ -12,3 +12,4 @@ class IKnowledgeBasePort(Protocol):
     def search(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """Executes hybrid vector + lexical retrieval over indexed documents."""
         ...
+
