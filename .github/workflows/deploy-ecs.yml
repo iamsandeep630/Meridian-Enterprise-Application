@@ -98,14 +98,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify AWS Identity & Permissions
+      - name: Log in to Amazon ECR
+        id: login-ecr
         run: |
-          echo "Checking STS caller identity..."
-          aws sts get-caller-identity
-          echo "Checking ECS cluster access..."
-          aws ecs describe-clusters --clusters ${{ env.ECS_CLUSTER }} --region ${{ env.AWS_REGION }}
-          echo "Attempting ECR login via AWS CLI..."
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          echo "registry=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_OUTPUT
 
       - name: Build, Tag, and Push Image to Amazon ECR
         id: build-image
