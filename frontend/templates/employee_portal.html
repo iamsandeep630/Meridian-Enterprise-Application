@@ -2997,7 +2997,7 @@
 
 <!-- ------------------- JAVASCRIPT LOGIC ------------------- -->
 <script>
-  const API_BASE = "http://localhost:8001";
+  const API_BASE = window.location.origin;
   const token = localStorage.getItem("customer_token") || localStorage.getItem("shopmart_token");
 
   // Authentication check
