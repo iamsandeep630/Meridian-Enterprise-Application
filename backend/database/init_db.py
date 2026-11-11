@@ -43,10 +43,32 @@ def init_db():
     db = SessionLocal()
     try:
         apply_catalog_config(db)
+        seed_default_users(db)
     finally:
         db.close()
 
     print(f"[Database] Initialized with tables: {', '.join(Base.metadata.tables.keys())}")
+
+def seed_default_users(db):
+    from auth.security import hash_password
+    default_users = [
+        {"email": "employee@meridian.com", "name": "Maya Sharma", "role": "employee", "password": "password123"},
+        {"email": "maya.sharma@meridian.com", "name": "Maya Sharma", "role": "employee", "password": "password123"},
+        {"email": "maya@meridian.com", "name": "Maya Sharma", "role": "employee", "password": "password123"},
+        {"email": "customer@meridian.com", "name": "Retail Customer", "role": "customer", "password": "password123"},
+        {"email": "alex@meridian.com", "name": "Alex Turner", "role": "support_engineer", "password": "password123"},
+    ]
+    for u in default_users:
+        existing = db.query(User).filter(User.email == u["email"]).first()
+        if not existing:
+            new_user = User(
+                email=u["email"],
+                name=u["name"],
+                role=u["role"],
+                hashed_password=hash_password(u["password"])
+            )
+            db.add(new_user)
+    db.commit()
 
 if __name__ == "__main__":
     init_db()
