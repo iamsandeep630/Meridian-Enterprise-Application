@@ -35,7 +35,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application backend, frontend, and configuration
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
-COPY catalog_config.json ./backend/catalog_config.json
 
 # Install minimal Node.js runner dependencies for meshctrl.js
 RUN cd /app/backend/bin && npm install --omit=dev
