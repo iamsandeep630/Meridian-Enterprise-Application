@@ -98,13 +98,23 @@ class HybridRetriever:
         self._local_initialized = True
 
     def _get_bedrock_client(self):
-        if self._bedrock_client is None and self.aws_key and self.aws_secret:
-            self._bedrock_client = boto3.client(
-                "bedrock-agent-runtime",
-                aws_access_key_id=self.aws_key,
-                aws_secret_access_key=self.aws_secret,
-                region_name=self.region_name
-            )
+        if self._bedrock_client is None:
+            in_ecs = bool(os.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"))
+            if in_ecs:
+                os.environ.pop("AWS_ACCESS_KEY_ID", None)
+                os.environ.pop("AWS_SECRET_ACCESS_KEY", None)
+                os.environ.pop("AWS_SESSION_TOKEN", None)
+                self._bedrock_client = boto3.client(
+                    "bedrock-agent-runtime",
+                    region_name=self.region_name
+                )
+            elif self.aws_key and self.aws_secret:
+                self._bedrock_client = boto3.client(
+                    "bedrock-agent-runtime",
+                    aws_access_key_id=self.aws_key,
+                    aws_secret_access_key=self.aws_secret,
+                    region_name=self.region_name
+                )
         return self._bedrock_client
 
     def bedrock_kb_search(self, query: str, top_k: int = TOP_K) -> list[dict]:

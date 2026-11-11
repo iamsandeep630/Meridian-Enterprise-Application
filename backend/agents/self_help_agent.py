@@ -169,7 +169,12 @@ class SelfHelpAgent:
     def _get_boto_session(self):
         if self._session is None:
             kwargs = {"region_name": self.region_name}
-            if self.aws_key and self.aws_secret:
+            in_ecs = bool(os.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"))
+            if in_ecs:
+                os.environ.pop("AWS_ACCESS_KEY_ID", None)
+                os.environ.pop("AWS_SECRET_ACCESS_KEY", None)
+                os.environ.pop("AWS_SESSION_TOKEN", None)
+            elif self.aws_key and self.aws_secret:
                 kwargs["aws_access_key_id"] = self.aws_key
                 kwargs["aws_secret_access_key"] = self.aws_secret
             self._session = boto3.Session(**kwargs)
