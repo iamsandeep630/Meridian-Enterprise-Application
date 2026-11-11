@@ -13,25 +13,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from services import meshcentral_service, jira_service, escalation_service
-from knowledge_base.retriever import HybridRetriever
+from container import Container
 
 
 # ==============================================================================
-# 1. TOOL DEFINITIONS
+# 1. TOOL DEFINITIONS (Routed through Hexagonal Ports)
 # ==============================================================================
 
 def search_knowledge_base(query: str, top_k: int = 5) -> list[dict]:
     """
     Searches the Confluence knowledge base using hybrid dense + lexical search.
-    Returns ranked document chunks with title, url, text, and relevance score.
+    Delegates to IKnowledgeBasePort.
     """
-    retriever = HybridRetriever.get_instance()
-    return retriever.search(query, top_k=top_k)
+    return Container.get_knowledge_port().search(query, top_k=top_k)
 
 
 def list_managed_devices() -> dict:
-    """Queries MeshCentral for all managed endpoints."""
-    return meshcentral_service.list_managed_devices()
+    """Queries MeshCentral for all managed endpoints via IRemoteRemediationPort."""
+    return Container.get_remediation_port().list_managed_devices()
 
 
 def get_device_info(device_id: Optional[str] = None) -> dict:
@@ -41,15 +40,17 @@ def get_device_info(device_id: Optional[str] = None) -> dict:
 
 def clear_zoom_cache(device_id: Optional[str] = None) -> dict:
     """
-    Executes remote Zoom cache clearing on the user's endpoint via MeshCentral.
+    Executes remote Zoom cache clearing on the user's endpoint via IRemoteRemediationPort.
     Terminates background Zoom processes, purges AppData cache directories,
     and removes temporary files.
     """
-    return meshcentral_service.clear_zoom_cache(device_id=device_id)
+    return Container.get_remediation_port().clear_zoom_cache(device_id=device_id)
 
 
 def create_device_sharing_link(device_id: Optional[str] = None, duration_minutes: int = 30) -> dict:
-    """Creates a 30-minute self-expiring remote desktop sharing link via MeshCentral."""
+    """Creates a 30-minute self-expiring remote desktop sharing link via IRemoteRemediationPort."""
+    if device_id:
+        return Container.get_remediation_port().create_sharing_link(device_id=device_id, duration_minutes=duration_minutes)
     return meshcentral_service.create_device_sharing_link(device_id=device_id, duration_minutes=duration_minutes)
 
 
