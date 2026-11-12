@@ -1,8 +1,17 @@
 import requests
 import json
+import pytest
 
 BASE = "http://127.0.0.1:8001"
 
+def is_server_running():
+    try:
+        r = requests.get(f"{BASE}/health", timeout=0.5)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+@pytest.mark.skipif(not is_server_running(), reason="Live server not running on 127.0.0.1:8001 (e2e integration check)")
 def test_chat():
     print("=== Testing Full AWS Bedrock RAG & Jira Escalation Flow ===")
     
