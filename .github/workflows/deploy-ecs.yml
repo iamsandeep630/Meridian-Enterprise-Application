@@ -1,4 +1,5 @@
 name: Meridian Enterprise App - ECS Fargate CI/CD
+# Automated Build, Test, ECR Push, and ECS Fargate Rolling Deployment Pipeline
 
 on:
   push:
