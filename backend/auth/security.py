@@ -1,12 +1,13 @@
 """
 Authentication Security Utilities: Password Hashing & JWT Token Handling
 """
+import os
 from datetime import datetime, timedelta
 import bcrypt
 from jose import jwt, JWTError
 
-# Configuration
-SECRET_KEY = "change-this-to-a-long-random-string-before-any-real-use"
+# Configuration - loaded dynamically from environment
+SECRET_KEY = os.getenv("JWT_SECRET", os.getenv("SECRET_KEY", "insecure-dev-fallback-key-do-not-use-in-production"))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
 
