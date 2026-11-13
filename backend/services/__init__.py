@@ -6,7 +6,7 @@ from . import jira_service
 from . import escalation_service
 
 try:
-    import tools
+    from agents import tools
 except ImportError:
     tools = None
 

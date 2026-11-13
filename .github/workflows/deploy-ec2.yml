@@ -110,7 +110,7 @@ jobs:
         run: |
           echo "Building Docker container image: meridian-enterprise:latest..."
           cd /opt/meridian/Meridian-Enterprise-Application
-          docker build -t meridian-enterprise:latest .
+          docker build -f infra/docker/Dockerfile -t meridian-enterprise:latest .
 
       - name: Container vulnerability scan
         run: |

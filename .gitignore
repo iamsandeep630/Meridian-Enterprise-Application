@@ -45,21 +45,19 @@ venv.bak/
 *.db
 *.db-journal
 *.sqlite3
-data/*.db
-!backend/database/shopmart.db
+data/sqlite/*.db
+!data/sqlite/.gitkeep
 !backend/database/seed_data.sql
 
-# Knowledge Base Built Artifacts (Regenerable)
-knowledge_base/data/knowledge.index
-knowledge_base/data/bm25_index.pkl
-knowledge_base/data/knowledge_chunks.json
-knowledge_base/data/knowledge_meta.json
-*.index
-*.pkl
+# Knowledge Base & Vector Index Built Artifacts (Regenerable)
+data/vector_indices/*.index
+data/vector_indices/*.pkl
+data/vector_indices/*.json
+!data/vector_indices/.gitkeep
 
 # Uploaded Tax Documents & Temp Files
-uploaded_tax_documents/*
-!uploaded_tax_documents/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
 
 # IDEs & Editors
 .vscode/

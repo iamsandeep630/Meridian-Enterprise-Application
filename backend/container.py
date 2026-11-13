@@ -2,15 +2,14 @@
 Dependency Injection Container / Service Registry
 Wires Hexagonal Architecture Ports to their concrete Adapters for Meridian Enterprise Application.
 """
-from ports.ticketing import ITicketingPort
-from ports.remediation import IRemoteRemediationPort
+from adapters.knowledge_adapters import HybridRetrieverAdapter
+from adapters.notification_adapters import SSEBroadcasterAdapter
+from adapters.remediation_adapters import MeshCentralAdapter
+from adapters.ticketing_adapters import JiraCloudAdapter
 from ports.knowledge import IKnowledgeBasePort
 from ports.notifications import INotificationPort
-
-from adapters.jira_adapter import JiraCloudAdapter
-from adapters.meshcentral_adapter import MeshCentralAdapter
-from adapters.retriever_adapter import HybridRetrieverAdapter
-from adapters.sse_adapter import SSEBroadcasterAdapter
+from ports.remediation import IRemoteRemediationPort
+from ports.ticketing import ITicketingPort
 
 
 class Container:

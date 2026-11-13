@@ -23,7 +23,7 @@ from strands.models.bedrock import BedrockModel
 load_dotenv()
 
 try:
-    from tools import get_friendly_tool_status
+    from agents.tools import get_friendly_tool_status
 except ImportError:
     def get_friendly_tool_status(tool_name: str) -> str:
         switch_map = {

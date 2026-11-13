@@ -3,13 +3,13 @@ Knowledge Base Indexer
 Generates dense vector embeddings via SentenceTransformer (all-MiniLM-L6-v2) for FAISS
 and BM25 tokenized lexical indexes.
 """
-import os
 import json
+import os
 import pickle
+
 import faiss
-import numpy as np
-from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
+from sentence_transformers import SentenceTransformer
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
@@ -61,4 +61,8 @@ def build_all(data_dir: str):
 
 if __name__ == "__main__":
     base = os.path.dirname(os.path.abspath(__file__))
-    build_all(os.path.join(base, "data"))
+    project_root = os.path.dirname(os.path.dirname(base))
+    target_data_dir = os.path.join(project_root, "data", "vector_indices")
+    if not os.path.exists(target_data_dir):
+        target_data_dir = os.path.join(base, "data")
+    build_all(target_data_dir)

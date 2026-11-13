@@ -3,10 +3,11 @@ Knowledge Base Hybrid Retriever with AWS Bedrock Knowledge Base Integration
 Provides primary search grounded on AWS Bedrock Knowledge Base (BAB6KXZLG6 in ap-south-1)
 with automatic fallback to local FAISS dense semantic embeddings and BM25 lexical keyword matching.
 """
-import os
-import re
 import json
+import os
 import pickle
+import re
+
 import boto3
 
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -20,15 +21,17 @@ CONFIDENCE_THRESHOLD = 0.45
 class HybridRetriever:
     _instance = None
 
-    def __init__(self, data_dir: str = None):
+    def __init__(self, data_dir: str | None = None):
         if not data_dir:
             base = os.path.dirname(os.path.abspath(__file__))
-            data_dir = os.path.join(base, "data")
-            if not os.path.exists(os.path.join(data_dir, "knowledge.index")):
-                # Fallback to root directory if present
-                root_dir = os.path.dirname(base)
-                if os.path.exists(os.path.join(root_dir, "knowledge.index")):
-                    data_dir = root_dir
+            project_root = os.path.dirname(os.path.dirname(base))
+            candidate_dirs = [
+                os.path.join(project_root, "data", "vector_indices"),
+                os.path.join(base, "data"),
+                os.path.join(os.path.dirname(base), "knowledge_base", "data"),
+                os.path.dirname(base),
+            ]
+            data_dir = next((d for d in candidate_dirs if os.path.exists(os.path.join(d, "knowledge.index"))), candidate_dirs[0])
 
         self.data_dir = data_dir
         self.meta_p = os.path.join(data_dir, "knowledge_meta.json")
@@ -70,7 +73,7 @@ class HybridRetriever:
             print(f"[HybridRetriever] Initialized with AWS Bedrock KB (ID: {self.kb_id}, Region: {self.region_name})")
 
     @classmethod
-    def get_instance(cls, data_dir: str = None):
+    def get_instance(cls, data_dir: str | None = None):
         if cls._instance is None:
             cls._instance = cls(data_dir)
         return cls._instance
@@ -79,7 +82,7 @@ class HybridRetriever:
         """Lazily initialize local sentence-transformers, FAISS, and BM25 index on demand."""
         if self._local_initialized:
             return
-        
+
         print("[HybridRetriever] Initializing local FAISS + BM25 embeddings...")
         try:
             import faiss

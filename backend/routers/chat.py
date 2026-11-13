@@ -17,10 +17,9 @@ from sqlalchemy.orm import Session
 from database import get_db, ChatSession, ChatMessage, User, JiraTicket
 from auth import get_current_user, require_employee
 from services import escalation_service, meshcentral_service, jira_service
-from agents import SelfHelpAgent, get_friendly_tool_status
-from knowledge_base.retriever import HybridRetriever
+from agents import SelfHelpAgent, get_friendly_tool_status, tools
+from rag.retriever import HybridRetriever
 from schemas import SessionOut, MessageIn, MessageOut, FeedbackIn, ChatReplyOut
-import tools
 
 router = APIRouter(tags=["Chat & Support Sessions"])
 

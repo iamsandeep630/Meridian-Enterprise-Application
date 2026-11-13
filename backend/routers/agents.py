@@ -1,9 +1,9 @@
 """
 Agents Router (Self-Help Copilot Only) - Meridian Enterprise Application
 """
-from fastapi import APIRouter
 from agents import SelfHelpAgent
-from knowledge_base.retriever import HybridRetriever
+from fastapi import APIRouter
+from rag.retriever import HybridRetriever
 
 router = APIRouter(prefix="/api/agents", tags=["Agents"])
 

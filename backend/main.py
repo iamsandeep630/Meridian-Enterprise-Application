@@ -4,8 +4,9 @@ Self Help Agent, Confluence RAG, MeshCentral Remote Remediation & Jira Integrati
 Port: 8001
 """
 import sys
-from pathlib import Path
 from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -15,10 +16,11 @@ BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+from config import STATIC_DIR
 from database import init_db
-from knowledge_base.retriever import HybridRetriever
-from config import STATIC_DIR, BASE_DIR
-from routers import auth, chat, support, remote, enterprise, agents, pages
+from rag.retriever import HybridRetriever
+from routers import agents, auth, chat, enterprise, pages, remote, support
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

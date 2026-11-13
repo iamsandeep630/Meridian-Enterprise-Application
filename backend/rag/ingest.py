@@ -2,11 +2,11 @@
 Confluence Ingest Module
 Downloads or syncs space documentation from Atlassian Confluence Cloud API into local docs.
 """
-import os
-import json
 import base64
-import urllib.request
+import json
+import os
 import re
+import urllib.request
 
 CONFLUENCE_URL = os.getenv("CONFLUENCE_BASE_URL", "https://agnishpaul2002.atlassian.net/wiki")
 CONFLUENCE_EMAIL = os.getenv("CONFLUENCE_EMAIL", "agnishpaul2002@gmail.com")

@@ -51,6 +51,8 @@ class TestSecretsAndSecurityBenchmarks(unittest.TestCase):
             ".idea",
             ".vscode",
             ".aws",  # deployment templates with placeholder arns
+            "infra",  # infrastructure templates and task definitions
+            "data",  # external mounted storage (sqlite, vectors, docs)
         }
         cls.EXCLUDED_FILES = {
             ".env",

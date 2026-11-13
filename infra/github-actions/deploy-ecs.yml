@@ -1,4 +1,5 @@
 name: Meridian Enterprise App - ECS Fargate CI/CD
+# Automated Build, Test, ECR Push, and ECS Fargate Rolling Deployment Pipeline
 
 on:
   push:
@@ -97,21 +98,25 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-session-name: GitHubActionsECSDeploy
 
       - name: Log in to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          echo "registry=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_OUTPUT
 
       - name: Build, Tag, and Push Image to Amazon ECR
         id: build-image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REGISTRY: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
           IMAGE_TAG: ${{ github.sha }}
         run: |
           IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           LATEST_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
           echo "Building Docker image: $IMAGE_URI"
-          docker build -t "$IMAGE_URI" -t "$LATEST_URI" .
+          docker build -f infra/docker/Dockerfile -t "$IMAGE_URI" -t "$LATEST_URI" .
           echo "Pushing image to Amazon ECR..."
           docker push "$IMAGE_URI"
           docker push "$LATEST_URI"
@@ -135,6 +140,8 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-session-name: GitHubActionsECSDeploy
 
       - name: Render Amazon ECS Task Definition
         id: render-task-def

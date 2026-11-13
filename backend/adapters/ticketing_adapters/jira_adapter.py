@@ -2,7 +2,8 @@
 Jira Cloud Secondary Adapter
 Implements ITicketingPort using Atlassian Jira Cloud REST API.
 """
-from typing import Dict, Any, Optional, List
+from typing import Any
+
 from ports.ticketing import ITicketingPort
 from services import jira_service
 
@@ -19,10 +20,10 @@ class JiraCloudAdapter(ITicketingPort):
         description: str,
         issue_type: str = "Task",
         priority: str = "Medium",
-        components: Optional[List[str]] = None,
-        labels: Optional[List[str]] = None,
-        custom_fields: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        components: list[str] | None = None,
+        labels: list[str] | None = None,
+        custom_fields: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         return self._service.create_ticket(
             summary=summary,
             description=description,
@@ -33,9 +34,8 @@ class JiraCloudAdapter(ITicketingPort):
             custom_fields=custom_fields
         )
 
-    def get_ticket(self, ticket_key: str) -> Optional[Dict[str, Any]]:
+    def get_ticket(self, ticket_key: str) -> dict[str, Any] | None:
         return self._service.get_ticket(ticket_key)
 
-    def update_ticket(self, ticket_key: str, fields: Dict[str, Any]) -> bool:
+    def update_ticket(self, ticket_key: str, fields: dict[str, Any]) -> bool:
         return self._service.update_ticket(ticket_key, fields)
-

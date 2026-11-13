@@ -3,9 +3,10 @@ Knowledge Base Chunker
 Splits Confluence documentation articles into structured, semantically meaningful chunks
 with metadata preservation (titles, headers, URLs, section context).
 """
-import re
 import json
 import os
+import re
+
 
 def chunk_markdown_article(title: str, text: str, url: str = "", max_chars: int = 600, overlap: int = 100) -> list[dict]:
     """
@@ -21,7 +22,7 @@ def chunk_markdown_article(title: str, text: str, url: str = "", max_chars: int 
             continue
 
         # Extract section heading if present
-        heading_match = re.match(r'^(#{1,3})\s+(.+)$', sec, re.M)
+        heading_match = re.match(r'^(#{1,3})\s+(.+)$', sec, re.MULTILINE)
         section_heading = heading_match.group(2).strip() if heading_match else title
 
         if len(sec) <= max_chars:
@@ -83,6 +84,10 @@ def chunk_all_docs(docs_dir: str, output_json: str) -> list[dict]:
 
 if __name__ == "__main__":
     base = os.path.dirname(os.path.abspath(__file__))
-    docs_p = os.path.join(base, "docs")
-    out_p = os.path.join(base, "data", "knowledge_chunks.json")
+    project_root = os.path.dirname(os.path.dirname(base))
+    docs_p = os.path.join(project_root, "data", "knowledge_corpus")
+    out_p = os.path.join(project_root, "data", "vector_indices", "knowledge_chunks.json")
+    if not os.path.exists(docs_p):
+        docs_p = os.path.join(base, "docs")
+        out_p = os.path.join(base, "data", "knowledge_chunks.json")
     chunk_all_docs(docs_p, out_p)

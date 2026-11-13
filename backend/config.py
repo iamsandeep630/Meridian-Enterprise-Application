@@ -3,6 +3,7 @@ Application Configuration & Environment Settings for Meridian Enterprise Applica
 """
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Directory Paths
@@ -22,22 +23,34 @@ JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
-# Database
-DATABASE_DIR = BACKEND_DIR / "database"
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_DIR / 'shopmart.db'}")
+# Data & Storage Directories
+DATA_DIR = BASE_DIR / "data"
+SQLITE_DIR = DATA_DIR / "sqlite"
+SQLITE_DIR.mkdir(parents=True, exist_ok=True)
+SQLITE_DB_PATH = SQLITE_DIR / "shopmart.db"
+
+# Database URL with primary data/sqlite location and fallback
+if SQLITE_DB_PATH.exists():
+    DEFAULT_DB_URL = f"sqlite:///{SQLITE_DB_PATH}"
+else:
+    DEFAULT_DB_URL = f"sqlite:///{BACKEND_DIR / 'database' / 'shopmart.db'}"
+
+DATABASE_DIR = SQLITE_DIR if SQLITE_DB_PATH.exists() else (BACKEND_DIR / "database")
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
 
 # Uploads Directory
-UPLOAD_DIR = BACKEND_DIR / "uploaded_tax_documents"
-UPLOAD_DIR.mkdir(exist_ok=True)
+UPLOAD_DIR = DATA_DIR / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Templates Directory
 TEMPLATES_DIR = BASE_DIR / "frontend" / "templates"
 STATIC_DIR = BASE_DIR / "frontend" / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 
-# Knowledge Base & RAG Paths
-KB_DIR = BACKEND_DIR / "knowledge_base"
-KB_DATA_DIR = KB_DIR / "data"
+# Knowledge Corpus & RAG Paths
+KNOWLEDGE_CORPUS_DIR = DATA_DIR / "knowledge_corpus"
+VECTOR_INDICES_DIR = DATA_DIR / "vector_indices"
+RAG_DIR = BACKEND_DIR / "rag"
 
 # MeshCentral
 MESHCENTRAL_URL = os.getenv("MESHCENTRAL_URL", "wss://localhost:443")

@@ -116,7 +116,7 @@ jobs:
           IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           LATEST_URI="$ECR_REGISTRY/$ECR_REPOSITORY:latest"
           echo "Building Docker image: $IMAGE_URI"
-          docker build -t "$IMAGE_URI" -t "$LATEST_URI" .
+          docker build -f infra/docker/Dockerfile -t "$IMAGE_URI" -t "$LATEST_URI" .
           echo "Pushing image to Amazon ECR..."
           docker push "$IMAGE_URI"
           docker push "$LATEST_URI"
