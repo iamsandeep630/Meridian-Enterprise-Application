@@ -1,5 +1,5 @@
 name: Meridian Enterprise App - Production DevSecOps & EC2 CI/CD
-# Comprehensive Enterprise CI/CD Pipeline matching Production Architecture:
+# CI/CD Testing - Meridian Enterprise Application Production Pipeline
 # Job 1: Quality Gate & DevSecOps Matrix (Syntax, Ruff, Dead Code, MyPy, Tests, Bandit, Secret Detection, Dependency Scan)
 # Job 2: Supply Chain Security (Docker Build, Container Scan, Generate SBOM)
 # Job 3: Rolling Deployment & Auto-Rollback (Deploy to EC2, Verify Deployment, Roll back if Unhealthy)
