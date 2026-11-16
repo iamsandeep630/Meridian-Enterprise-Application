@@ -110,7 +110,13 @@ jobs:
         run: |
           echo "Building Docker container image: meridian-enterprise:latest..."
           cd /opt/meridian/Meridian-Enterprise-Application
-          docker build -f infra/docker/Dockerfile -t meridian-enterprise:latest .
+          git fetch origin main
+          git reset --hard origin/main
+          if [ -f infra/docker/Dockerfile ]; then
+            docker build -f infra/docker/Dockerfile -t meridian-enterprise:latest .
+          else
+            docker build -t meridian-enterprise:latest .
+          fi
 
       - name: Container vulnerability scan
         run: |
