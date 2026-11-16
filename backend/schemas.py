@@ -1,7 +1,7 @@
 """
 Pydantic API Schemas for Meridian Enterprise Helpdesk
 """
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from datetime import datetime
 
 class LoginRequest(BaseModel):
@@ -20,8 +20,7 @@ class UserProfileOut(BaseModel):
     role: str
     created_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MeetingOut(BaseModel):
     id: int
@@ -32,8 +31,7 @@ class MeetingOut(BaseModel):
     status: str = "Starting soon"
     tags: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class EmailOut(BaseModel):
     id: int
@@ -45,8 +43,7 @@ class EmailOut(BaseModel):
     is_read: bool | int = False
     is_urgent: bool | int = False
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class LeaveOut(BaseModel):
     id: int
@@ -58,8 +55,7 @@ class LeaveOut(BaseModel):
     status: str = "Approved"
     created_at: datetime | str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class LeaveCreate(BaseModel):
     leave_type: str
@@ -83,15 +79,13 @@ class CompanyProjectOut(BaseModel):
     deadline: str
     finance_lead: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class SessionOut(BaseModel):
     id: int
     title: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MessageIn(BaseModel):
     message: str
@@ -104,8 +98,7 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class FeedbackIn(BaseModel):
     action: str  # "resolved" or "not_resolved"
@@ -130,8 +123,7 @@ class ProductOut(BaseModel):
     image_url: str | None = None
     delivery_estimate: str = "Tomorrow, 11 AM"
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductCreate(BaseModel):
     name: str
@@ -162,8 +154,7 @@ class InvoiceOut(BaseModel):
     status: str = "draft"
     created_at: datetime | str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CustomerProductOut(BaseModel):
     id: int
@@ -176,5 +167,4 @@ class CustomerProductOut(BaseModel):
     image_url: str | None = None
     delivery_estimate: str = "Tomorrow, 11 AM"
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
