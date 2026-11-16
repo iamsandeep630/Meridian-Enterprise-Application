@@ -3413,7 +3413,7 @@
     if (val === "GST 28% (New Category)") {
       tip.style.display = "block";
       tip.innerHTML = "⚠️ <strong>Audit Rule INV-REM-102:</strong> Remarks is strictly required for GST 28%. <em>(Notice: Remarks input disabled by UI rule)</em>";
-      remarks.disabled = true;
+      remarks.disabled = false;
       remarks.value = "";
       remarks.placeholder = "Remarks input disabled by UI rule (Triggers compliance error INV-REM-102)...";
       remarks.style.backgroundColor = "#f1f5f9";
