@@ -1,6 +1,6 @@
 # ==============================================================================
 # Dockerfile for Meridian Enterprise Application
-# Production-ready container image for deployment to AWS ECS Fargate
+# Production-ready container image for deployment to AWS ECS Fargate / EC2
 # Includes Python 3.11 runtime and Node.js for MeshCentral CLI (meshctrl.js)
 # ==============================================================================
 
@@ -8,8 +8,6 @@ FROM python:3.11-slim-bookworm as base
 
 # Copy Node.js runtime from official Node image (shares exact same Debian Bookworm glibc base)
 COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
-COPY --from=node:20-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=node:20-bookworm-slim /usr/local/bin/npm /usr/local/bin/npm
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -33,9 +31,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application backend, frontend, and configuration
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
-
-# Ensure Node modules are installed if not present
-RUN cd /app/backend/bin && if [ ! -d "node_modules/ws" ]; then npm install --omit=dev; fi
 
 # Expose FastAPI port
 EXPOSE 8001
