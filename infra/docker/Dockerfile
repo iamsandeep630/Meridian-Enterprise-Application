@@ -4,7 +4,7 @@
 # Includes Python 3.11 runtime and Node.js for MeshCentral CLI (meshctrl.js)
 # ==============================================================================
 
-FROM python:3.11-slim as base
+FROM python:3.11-slim-bookworm as base
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \

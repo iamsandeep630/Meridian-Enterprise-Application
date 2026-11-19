@@ -114,9 +114,9 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
           if [ -f infra/docker/Dockerfile ]; then
-            docker build -f infra/docker/Dockerfile -t meridian-enterprise:latest .
+            docker build --pull -f infra/docker/Dockerfile -t meridian-enterprise:latest .
           else
-            docker build -t meridian-enterprise:latest .
+            docker build --pull -t meridian-enterprise:latest .
           fi
           sudo chown -R ubuntu:ubuntu /opt/meridian/Meridian-Enterprise-Application || true
 
