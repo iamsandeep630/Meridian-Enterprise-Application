@@ -78,15 +78,17 @@ async def post_session_message(
     current_user: User = Depends(require_employee),
     db: Session = Depends(get_db)
 ):
-    session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    user_msg = ChatMessage(session_id=session.id, role="user", kind="text", content=req.message)
-    db.add(user_msg)
-    db.commit()
-
+    print(f"[CHAT POST START] session_id={session_id}, user={current_user.email}, msg={req.message!r}", flush=True)
     try:
+        session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        user_msg = ChatMessage(session_id=session.id, role="user", kind="text", content=req.message)
+        db.add(user_msg)
+        db.commit()
+        print(f"[CHAT POST] User message added and committed (msg_id={user_msg.id}).", flush=True)
+
         # Check if session is currently escalated to a human Support Engineer
         cid = str(session.id)
         conv = escalation_service.conversation_store.get(cid)
@@ -234,6 +236,7 @@ async def post_session_message(
                     user_query = m.content
     
             try:
+                print(f"[RemoteAction] Starting remote remediation workflow for session {session.id}...", flush=True)
                 # Step 1: User has confirmed to proceed with remote action.
                 # CRITICAL REQUIREMENT: Self-help chatbot MUST create the Jira ticket with status 'In Progress' FIRST before executing any remote action!
                 await broadcast_tool_status(session.id, "jira_create_ticket")
@@ -304,7 +307,9 @@ async def post_session_message(
                 await broadcast_tool_status(session.id, "list_managed_devices")
                 await broadcast_tool_status(session.id, "get_device_info")
                 await broadcast_tool_status(session.id, "clear_zoom_cache")
+                print(f"[RemoteAction] Step 2: Executing clear_zoom_cache(device_id={dev_id})...", flush=True)
                 res = tools.clear_zoom_cache(device_id=dev_id)
+                print(f"[RemoteAction] clear_zoom_cache finished: {res}", flush=True)
                 if res.get("success"):
                     dev_name = res.get("deviceName", dev_name)
                     bot_text = (
@@ -478,8 +483,10 @@ async def post_session_message(
             tool_used="search_knowledge_base",
             tool_status=tools.get_friendly_tool_status("search_knowledge_base")
         )
+    except HTTPException:
+        raise
     except Exception as top_err:
-        print(f"[FATAL CHAT ERROR in session {session_id}]: {top_err}")
+        print(f"[FATAL CHAT ERROR in session {session_id}]: {top_err}", flush=True)
         import traceback
         traceback.print_exc()
         db.rollback()
@@ -488,12 +495,12 @@ async def post_session_message(
                 "⚠️ I encountered an issue while processing your request on your device.\n\n"
                 "Would you like me to escalate this issue to a human Support Engineer who can connect remotely and assist you?"
             )
-            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=safe_reply)
+            bot_msg = ChatMessage(session_id=session_id, role="bot", kind="text", content=safe_reply)
             db.add(bot_msg)
             db.commit()
         except Exception as recovery_err:
             db.rollback()
-            print(f"[RECOVERY ERROR in session {session_id}]: {recovery_err}")
+            print(f"[RECOVERY ERROR in session {session_id}]: {recovery_err}", flush=True)
 
         return ChatReplyOut(
             escalate=False,

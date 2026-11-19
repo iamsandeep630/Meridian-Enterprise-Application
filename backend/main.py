@@ -3,13 +3,32 @@ Meridian Enterprise Application Backend
 Self Help Agent, Confluence RAG, MeshCentral Remote Remediation & Jira Integration
 Port: 8001
 """
+import collections
 import sys
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+# In-memory recent log buffer for diagnostic monitoring
+LOG_BUFFER = collections.deque(maxlen=300)
+
+class LogCapture:
+    def __init__(self, stream):
+        self.stream = stream
+    def write(self, msg):
+        if msg and msg.strip():
+            LOG_BUFFER.append(msg.strip())
+        self.stream.write(msg)
+    def flush(self):
+        self.stream.flush()
+
+sys.stdout = LogCapture(sys.stdout)
+sys.stderr = LogCapture(sys.stderr)
 
 # Ensure backend directory is in sys.path
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -68,6 +87,19 @@ app.include_router(pages.router)
 # Mount Static Files
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
+    print(f"[GLOBAL UNHANDLED EXCEPTION]: {tb}", flush=True)
+    return JSONResponse(
+        status_code=500,
+        content={"error": str(exc), "traceback": tb, "type": type(exc).__name__}
+    )
+
+@app.get("/api/debug/logs")
+def get_debug_logs():
+    return {"count": len(LOG_BUFFER), "logs": list(LOG_BUFFER)}
 
 @app.get("/health")
 def health_check():
