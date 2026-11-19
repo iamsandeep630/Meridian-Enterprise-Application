@@ -619,15 +619,17 @@ class SelfHelpAgent:
                 (m.content if hasattr(m, "content") else m.get("content", "")).lower()
                 for m in history[-2:]
             ])
-            zoom_cache_phrases = [
-                "clear zoom cache",
-                "zoom cache clear",
-                "clear the zoom cache",
-                "remote zoom fix",
-                "zoom remediation",
-                "execute zoom cache"
-            ]
-            fix_was_offered = any(phrase in recent_texts for phrase in zoom_cache_phrases)
+            has_zoom_word = "zoom" in recent_texts
+            has_cache_word = "cache" in recent_texts
+            has_clear_action = any(w in recent_texts for w in ["clear", "clearing", "clean", "purge", "remediation", "remote fix"])
+            fix_was_offered = (has_zoom_word and has_cache_word and has_clear_action) or any(
+                phrase in recent_texts for phrase in [
+                    "clear zoom cache", "zoom cache clear", "clear the zoom cache",
+                    "clear your zoom cache", "clearing your zoom cache", "clearing the zoom cache",
+                    "remote zoom fix", "zoom remediation", "execute zoom cache", "remote cache clear",
+                    "remotely clear", "clear the zoom application cache"
+                ]
+            )
         
         if not fix_was_offered:
             explicit_phrases = [
