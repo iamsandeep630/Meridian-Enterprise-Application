@@ -154,8 +154,18 @@ class SelfHelpAgent:
 
     def __init__(self, model_id: str = None, region_name: str = "ap-south-1"):
         load_dotenv()
-        default_model = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
-        self.model_id = model_id or default_model
+        deprecated_models = [
+            "anthropic.claude-3-sonnet-20240229-v1:0",
+            "anthropic.claude-3-haiku-20240307-v1:0",
+            "anthropic.claude-3-5-sonnet-20240620-v1:0"
+        ]
+        active_haiku = "in.anthropic.claude-haiku-4-5-20251001-v1:0"
+        configured_model = model_id or os.getenv("BEDROCK_MODEL_ID")
+        if not configured_model or configured_model in deprecated_models:
+            self.model_id = active_haiku
+        else:
+            self.model_id = configured_model
+
         self.region_name = os.getenv("AWS_REGION", region_name)
         self.aws_key = os.getenv("AWS_ACCESS_KEY_ID")
         self.aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY")
