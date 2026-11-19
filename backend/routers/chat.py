@@ -84,270 +84,379 @@ async def post_session_message(
 
     user_msg = ChatMessage(session_id=session.id, role="user", kind="text", content=req.message)
     db.add(user_msg)
-    db.flush()  # Flush to make the message available in session.messages without full commit
+    db.commit()
 
-    # Check if session is currently escalated to a human Support Engineer
-    cid = str(session.id)
-    conv = escalation_service.conversation_store.get(cid)
-    db_ticket = db.query(JiraTicket).filter(JiraTicket.session_id == session.id).first()
-
-    engineer_has_joined = (conv and conv.get("engineerJoined")) or any(m.kind == "engineer_joined" for m in session.messages)
-    is_human_escalated = (conv and conv.get("status") == "escalated")
-    is_bot_remediation = (db_ticket and db_ticket.status in ["In Progress", "Bot Resolved"]) or (conv and conv.get("status") in ["in_progress", "resolved"])
-
-    is_live_support = engineer_has_joined or (is_human_escalated and not is_bot_remediation)
-
-    if is_live_support:
-        db.commit()
-        await escalation_service.post_conversation_message(cid, "user", req.message)
-        return ChatReplyOut(escalate=False, top_score=1.0, matches=[])
-
-    # 1. Check for standalone greetings FIRST before expensive searches
-    if agent.is_greeting(req.message):
-        greeting_reply = agent.generate_greeting_reply(req.message)
-        if session.title in ("New conversation", "New Conversation"):
-            session.title = "Welcome & Greetings"
-        bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=greeting_reply)
-        db.add(bot_msg)
-        db.commit()
-        return ChatReplyOut(escalate=False, top_score=1.0, matches=[])
-
-    # 2. Smart Query Formulation to prevent RAG pollution:
-    # If the user is escalating or confirming a ticket, do NOT search Confluence for "raise a ticket"
-    is_escalation = agent.is_escalation_confirmation(req.message)
-    if is_escalation:
-        matches = []
-        escalate_needed, top_score = False, 1.0
-    else:
-        # Check if query is about enterprise product catalog / invoice dropdown / checkbox / UI bugs
-        low_msg = req.message.lower()
-        has_catalog = any(k in low_msg for k in ["dropdown", "catalog", "invoice", "invoicing", "portal"])
-        has_prod = any(k in low_msg for k in ["webcam", "camera", "monitor", "keyboard", "mouse", "headset", "product", "item", "4k"])
-        has_checkbox = any(k in low_msg for k in ["checkbox", "check box", "tick", "ticked", "box"])
-        has_bug = any(k in low_msg for k in ["bug", "crash", "un-operational", "unoperational", "not working", "broken"])
-        
-        if (has_catalog and has_prod) or ("dropdown" in low_msg and ("not showing" in low_msg or "missing" in low_msg or "empty" in low_msg or "product" in low_msg)):
-            kb_query = "Adding a new product to the invoicing catalog dropdown"
-        elif has_checkbox:
-            kb_query = "Enterprise Application UI and invoice form functionality issues checkbox not getting ticked"
-        elif has_bug and (has_catalog or "app" in low_msg or "application" in low_msg):
-            kb_query = "Enterprise Application UI and Functionality Issues"
-        else:
-            kb_query = req.message
-
-        await broadcast_tool_status(session.id, "search_knowledge_base")
-        matches = tools.search_knowledge_base(kb_query, top_k=5)
-        escalate_needed, top_score = retriever.is_escalation_needed(matches)
-
-    # 3. Update session title if New Conversation
-    if session.title in ("New conversation", "New Conversation"):
-        match_title = matches[0]["title"] if matches else None
-        session.title = make_chat_title(req.message, match_title)
-
-    # 4. Compile conversation history for multi-turn cognitive reasoning
-    # CRITICAL: Include ALL messages up to and including the current user message
-    history_contents = [
-        {"role": m.role, "content": m.content}
-        for m in session.messages
-        if m.kind == "text" and m.content
-    ]
+    try:
+        # Check if session is currently escalated to a human Support Engineer
+        cid = str(session.id)
+        conv = escalation_service.conversation_store.get(cid)
+        db_ticket = db.query(JiraTicket).filter(JiraTicket.session_id == session.id).first()
     
-    # Debug: Log history length to verify context is being maintained
-    print(f"[Context Debug] Session {session.id}: {len(history_contents)} messages in history")
-
-    # 5. Let Bedrock reason, synthesize the answer, and decide if an action is needed
-    agent_result = agent.generate_response(
-        user_query=req.message,
-        chat_history=history_contents,
-        matches=matches
-    )
-    action = agent_result.get("action")
-    bot_reply = agent_result.get("reply", "")
-
-    # =========================================================================
-    # ACTION DISPATCHING (Executed through tools.py)
-    # CRITICAL: Evaluate resolution confirmation BEFORE potential re-triggering of remediation
-    # =========================================================================
-
-    # 1. Check if user confirms that their issue has been resolved
-    is_resolved = (action == "resolve_issue") or agent.is_resolved_signal(req.message, history_contents)
-    if is_resolved:
-        await broadcast_tool_status(session.id, "jira_update_ticket")
-        target_key = None
-        if db_ticket:
-            db_ticket.status = "Bot Resolved"
+        engineer_has_joined = (conv and conv.get("engineerJoined")) or any(m.kind == "engineer_joined" for m in session.messages)
+        is_human_escalated = (conv and conv.get("status") == "escalated")
+        is_bot_remediation = (db_ticket and db_ticket.status in ["In Progress", "Bot Resolved"]) or (conv and conv.get("status") in ["in_progress", "resolved"])
+    
+        is_live_support = engineer_has_joined or (is_human_escalated and not is_bot_remediation)
+    
+        if is_live_support:
             db.commit()
-            target_key = db_ticket.ticket_key
-        if not target_key and conv and conv.get("jiraKey"):
-            target_key = conv.get("jiraKey")
-        if not target_key:
-            target_key = session.id
-
-        try:
-            await escalation_service.mark_ticket_bot_resolved(
-                session_id_or_key=target_key,
-                comment="Automated remediation completed successfully by Bot (AI Helpdesk Assistant). User verified that the issue has been resolved."
-            )
-        except Exception as e:
-            print(f"[ResolveIssue] Error marking ticket Bot Resolved: {e}")
-
-        resolve_reply = (
-            bot_reply if bot_reply and ("glad" in bot_reply.lower() or "resolv" in bot_reply.lower() or "fixed" in bot_reply.lower()) else
-            "I'm glad to hear that resolved your issue! Please let me know if there is anything else I can help you with."
+            await escalation_service.post_conversation_message(cid, "user", req.message)
+            return ChatReplyOut(escalate=False, top_score=1.0, matches=[])
+    
+        # 1. Check for standalone greetings FIRST before expensive searches
+        if agent.is_greeting(req.message):
+            greeting_reply = agent.generate_greeting_reply(req.message)
+            if session.title in ("New conversation", "New Conversation"):
+                session.title = "Welcome & Greetings"
+            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=greeting_reply)
+            db.add(bot_msg)
+            db.commit()
+            return ChatReplyOut(escalate=False, top_score=1.0, matches=[])
+    
+        # 2. Smart Query Formulation to prevent RAG pollution:
+        # If the user is escalating or confirming a ticket, do NOT search Confluence for "raise a ticket"
+        is_escalation = agent.is_escalation_confirmation(req.message)
+        if is_escalation:
+            matches = []
+            escalate_needed, top_score = False, 1.0
+        else:
+            # Check if query is about enterprise product catalog / invoice dropdown / checkbox / UI bugs
+            low_msg = req.message.lower()
+            has_catalog = any(k in low_msg for k in ["dropdown", "catalog", "invoice", "invoicing", "portal"])
+            has_prod = any(k in low_msg for k in ["webcam", "camera", "monitor", "keyboard", "mouse", "headset", "product", "item", "4k"])
+            has_checkbox = any(k in low_msg for k in ["checkbox", "check box", "tick", "ticked", "box"])
+            has_bug = any(k in low_msg for k in ["bug", "crash", "un-operational", "unoperational", "not working", "broken"])
+            
+            if (has_catalog and has_prod) or ("dropdown" in low_msg and ("not showing" in low_msg or "missing" in low_msg or "empty" in low_msg or "product" in low_msg)):
+                kb_query = "Adding a new product to the invoicing catalog dropdown"
+            elif has_checkbox:
+                kb_query = "Enterprise Application UI and invoice form functionality issues checkbox not getting ticked"
+            elif has_bug and (has_catalog or "app" in low_msg or "application" in low_msg):
+                kb_query = "Enterprise Application UI and Functionality Issues"
+            else:
+                kb_query = req.message
+    
+            await broadcast_tool_status(session.id, "search_knowledge_base")
+            matches = tools.search_knowledge_base(kb_query, top_k=5)
+            escalate_needed, top_score = retriever.is_escalation_needed(matches)
+    
+        # 3. Update session title if New Conversation
+        if session.title in ("New conversation", "New Conversation"):
+            match_title = matches[0]["title"] if matches else None
+            session.title = make_chat_title(req.message, match_title)
+    
+        # 4. Compile conversation history for multi-turn cognitive reasoning
+        # CRITICAL: Include ALL messages up to and including the current user message
+        history_contents = [
+            {"role": m.role, "content": m.content}
+            for m in session.messages
+            if m.kind == "text" and m.content
+        ]
+        
+        # Debug: Log history length to verify context is being maintained
+        print(f"[Context Debug] Session {session.id}: {len(history_contents)} messages in history")
+    
+        # 5. Let Bedrock reason, synthesize the answer, and decide if an action is needed
+        agent_result = agent.generate_response(
+            user_query=req.message,
+            chat_history=history_contents,
+            matches=matches
         )
-        bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=resolve_reply)
-        db.add(bot_msg)
-        db.commit()
-        return ChatReplyOut(
-            escalate=False,
-            top_score=1.0,
-            matches=[],
-            tool_used="jira_update_ticket",
-            tool_status=tools.get_friendly_tool_status("jira_update_ticket")
-        )
-
-    # 2. Check if user confirms remote Zoom cache clear
-    is_zoom_intent = agent.is_zoom_remediation_intent(req.message, history_contents)
-    if action == "clear_zoom_cache" or (not action and is_zoom_intent):
-        # Validate that the user actually confirmed in their most recent message
-        if not is_zoom_intent:
-            print(f"[WARNING] Agent returned clear_zoom_cache action but user did not confirm. Ignoring action. User said: '{req.message}'")
-            safe_reply = (
-                "I'd like to help clear the Zoom cache on your device remotely. "
-                "Could you please confirm — would you like me to go ahead and execute the remote Zoom cache clear on your device?"
+        action = agent_result.get("action")
+        bot_reply = agent_result.get("reply", "")
+    
+        # =========================================================================
+        # ACTION DISPATCHING (Executed through tools.py)
+        # CRITICAL: Evaluate resolution confirmation BEFORE potential re-triggering of remediation
+        # =========================================================================
+    
+        # 1. Check if user confirms that their issue has been resolved
+        is_resolved = (action == "resolve_issue") or agent.is_resolved_signal(req.message, history_contents)
+        if is_resolved:
+            await broadcast_tool_status(session.id, "jira_update_ticket")
+            target_key = None
+            if db_ticket:
+                db_ticket.status = "Bot Resolved"
+                db.commit()
+                target_key = db_ticket.ticket_key
+            if not target_key and conv and conv.get("jiraKey"):
+                target_key = conv.get("jiraKey")
+            if not target_key:
+                target_key = session.id
+    
+            try:
+                await escalation_service.mark_ticket_bot_resolved(
+                    session_id_or_key=target_key,
+                    comment="Automated remediation completed successfully by Bot (AI Helpdesk Assistant). User verified that the issue has been resolved."
+                )
+            except Exception as e:
+                print(f"[ResolveIssue] Error marking ticket Bot Resolved: {e}")
+    
+            resolve_reply = (
+                bot_reply if bot_reply and ("glad" in bot_reply.lower() or "resolv" in bot_reply.lower() or "fixed" in bot_reply.lower()) else
+                "I'm glad to hear that resolved your issue! Please let me know if there is anything else I can help you with."
             )
-            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=safe_reply)
+            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=resolve_reply)
             db.add(bot_msg)
             db.commit()
             return ChatReplyOut(
                 escalate=False,
-                top_score=top_score,
-                matches=matches,
-                tool_used="search_knowledge_base",
-                tool_status=tools.get_friendly_tool_status("search_knowledge_base")
+                top_score=1.0,
+                matches=[],
+                tool_used="jira_update_ticket",
+                tool_status=tools.get_friendly_tool_status("jira_update_ticket")
             )
-
-        user_query = req.message
-        for m in session.messages:
-            if m.role == "user" and m.content and m.kind == "text":
-                user_query = m.content
-
-        try:
-            # Step 1: User has confirmed to proceed with remote action.
-            # CRITICAL REQUIREMENT: Self-help chatbot MUST create the Jira ticket with status 'In Progress' FIRST before executing any remote action!
-            await broadcast_tool_status(session.id, "jira_create_ticket")
-
-            dev_res = meshcentral_service.list_managed_devices()
-            device = meshcentral_service.find_device(dev_res.get("devices", [])) if dev_res.get("success") else None
-            dev_name = device.get("name", "AVDGLS5-4") if device else "AVDGLS5-4"
-            dev_os = device.get("os", "Microsoft Windows 11 Enterprise") if device else "Microsoft Windows 11 Enterprise"
-            dev_ip = device.get("ip", "10.73.87.230") if device else "10.73.87.230"
-            dev_users = device.get("currentUsers", [current_user.email]) if device else [current_user.email]
-            dev_id = device.get("id") if device else None
-
-            device_diag = {
-                "name": dev_name,
-                "os": dev_os,
-                "ip": dev_ip,
-                "currentUsers": dev_users,
-                "id": dev_id
-            }
-
-            # Create or update Jira ticket with status 'In Progress' and assignee 'Bot'
-            if not db_ticket:
+    
+        # 2. Check if user confirms remote Zoom cache clear
+        is_zoom_intent = agent.is_zoom_remediation_intent(req.message, history_contents)
+        if action == "clear_zoom_cache" or (not action and is_zoom_intent):
+            # Validate that the user actually confirmed in their most recent message
+            if not is_zoom_intent:
+                print(f"[WARNING] Agent returned clear_zoom_cache action but user did not confirm. Ignoring action. User said: '{req.message}'")
+                safe_reply = (
+                    "I'd like to help clear the Zoom cache on your device remotely. "
+                    "Could you please confirm — would you like me to go ahead and execute the remote Zoom cache clear on your device?"
+                )
+                bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=safe_reply)
+                db.add(bot_msg)
+                db.commit()
+                return ChatReplyOut(
+                    escalate=False,
+                    top_score=top_score,
+                    matches=matches,
+                    tool_used="search_knowledge_base",
+                    tool_status=tools.get_friendly_tool_status("search_knowledge_base")
+                )
+    
+            user_query = req.message
+            for m in session.messages:
+                if m.role == "user" and m.content and m.kind == "text":
+                    user_query = m.content
+    
+            try:
+                # Step 1: User has confirmed to proceed with remote action.
+                # CRITICAL REQUIREMENT: Self-help chatbot MUST create the Jira ticket with status 'In Progress' FIRST before executing any remote action!
+                await broadcast_tool_status(session.id, "jira_create_ticket")
+    
+                dev_res = meshcentral_service.list_managed_devices()
+                device = meshcentral_service.find_device(dev_res.get("devices", [])) if dev_res.get("success") else None
+                dev_name = device.get("name", "AVDGLS5-4") if device else "AVDGLS5-4"
+                dev_os = device.get("os", "Microsoft Windows 11 Enterprise") if device else "Microsoft Windows 11 Enterprise"
+                dev_ip = device.get("ip", "10.73.87.230") if device else "10.73.87.230"
+                dev_users = device.get("currentUsers", [current_user.email]) if device else [current_user.email]
+                dev_id = device.get("id") if device else None
+    
+                device_diag = {
+                    "name": dev_name,
+                    "os": dev_os,
+                    "ip": dev_ip,
+                    "currentUsers": dev_users,
+                    "id": dev_id
+                }
+    
+                # Create or update Jira ticket with status 'In Progress' and assignee 'Bot'
                 try:
-                    remed_ticket = await escalation_service.create_remediation_ticket(
-                        session_id=session.id,
-                        user_email=current_user.email,
-                        issue_summary=f"Zoom freezing remediation - {current_user.name}",
-                        device_info=device_diag,
-                        execution_details="User confirmed automated remote Zoom cache clearing. Remediation initiated by Bot."
+                    if not db_ticket:
+                        remed_ticket = await escalation_service.create_remediation_ticket(
+                            session_id=session.id,
+                            user_email=current_user.email,
+                            issue_summary=f"Zoom freezing remediation - {current_user.name}",
+                            device_info=device_diag,
+                            execution_details="User confirmed automated remote Zoom cache clearing. Remediation initiated by Bot."
+                        )
+                        instance_url, _, _, project_key = jira_service._get_jira_config()
+                        j_key = remed_ticket.get("jiraKey", f"{project_key}-{session.id}")
+                        j_url = remed_ticket.get("jiraUrl", f"{instance_url}/browse/{j_key}")
+    
+                        existing_t = db.query(JiraTicket).filter(
+                            (JiraTicket.session_id == session.id) | (JiraTicket.ticket_key == j_key)
+                        ).first()
+                        if existing_t:
+                            existing_t.status = "In Progress"
+                            existing_t.ticket_key = j_key
+                            existing_t.ticket_url = j_url
+                            db_ticket = existing_t
+                        else:
+                            db_ticket = JiraTicket(
+                                ticket_key=j_key,
+                                session_id=session.id,
+                                reporter_email=current_user.email,
+                                summary=f"Zoom freezing remediation - {current_user.name}",
+                                user_query=user_query,
+                                transcript="Automated remediation initiated.",
+                                status="In Progress",
+                                priority="Medium",
+                                ticket_url=j_url,
+                                is_live=True
+                            )
+                            db.add(db_ticket)
+                        db.commit()
+                    else:
+                        db_ticket.status = "In Progress"
+                        db.commit()
+                        jira_service.transition_jira_ticket(db_ticket.ticket_key, "In Progress")
+                        jira_service.set_jira_assignee(db_ticket.ticket_key, "Bot")
+                except Exception as e:
+                    db.rollback()
+                    print(f"[RemoteAction] Jira ticket creation error (non-fatal): {e}")
+    
+                # Step 2: AFTER Jira ticket is created and transitioned to In Progress, execute the remote action
+                await broadcast_tool_status(session.id, "list_managed_devices")
+                await broadcast_tool_status(session.id, "get_device_info")
+                await broadcast_tool_status(session.id, "clear_zoom_cache")
+                res = tools.clear_zoom_cache(device_id=dev_id)
+                if res.get("success"):
+                    dev_name = res.get("deviceName", dev_name)
+                    bot_text = (
+                        "⚡ **Remote Action Executed**\n\n"
+                        f"The Zoom cache clear command has been successfully executed on your managed device (**{dev_name}**).\n\n"
+                        "**Actions Executed:**\n"
+                        "• Stopped active Zoom background processes (`Zoom`, `ZoomOpener`, `CptHost`)\n"
+                        "• Purged corrupted application caches and CEF webcache files in `AppData\\Local\\Zoom` and `AppData\\Roaming\\Zoom`\n"
+                        "• Cleaned temporary lock files\n\n"
+                        "> 💬 **Next Steps:** Please launch Zoom again and sign in.\n\n"
+                        "Please test if your meetings and application are working normally. **Did this resolve your issue?**"
                     )
-                    instance_url, _, _, project_key = jira_service._get_jira_config()
-                    j_key = remed_ticket.get("jiraKey", f"{project_key}-{session.id}")
-                    j_url = remed_ticket.get("jiraUrl", f"{instance_url}/browse/{j_key}")
+                else:
+                    bot_text = (
+                        f"⚠️ Failed to clear Zoom cache on device: {res.get('error')}. "
+                        "Would you like me to escalate this issue to a human Support Engineer who can connect to your device remotely?"
+                    )
+                bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=bot_text)
+                db.add(bot_msg)
+                db.commit()
+                return ChatReplyOut(
+                    escalate=False,
+                    top_score=1.0,
+                    matches=[],
+                    tool_used="clear_zoom_cache",
+                    tool_status=tools.get_friendly_tool_status("clear_zoom_cache")
+                )
+            except Exception as action_err:
+                print(f"[RemoteAction Execution Error]: {action_err}")
+                db.rollback()
+                try:
+                    fail_text = (
+                        f"⚠️ An error occurred while executing the remote fix: {str(action_err)}.\n\n"
+                        "Would you like me to escalate this issue to a human Support Engineer who can connect to your device remotely and assist you?"
+                    )
+                    bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=fail_text)
+                    db.add(bot_msg)
+                    db.commit()
+                except Exception as bot_err:
+                    db.rollback()
+                    print(f"[RemoteAction Bot Msg Error]: {bot_err}")
+                return ChatReplyOut(
+                    escalate=False,
+                    top_score=1.0,
+                    matches=[],
+                    tool_used="clear_zoom_cache",
+                    tool_status="Action completed with error"
+                )
+    
+        # 3. Check if user requests escalation to human L2 Support or asks to raise a ticket
+        elif action == "escalate_to_l2_support" or agent.is_escalation_confirmation(req.message, history_contents):
+            # Validate that the user actually confirmed escalation in their most recent message
+            if not agent.is_escalation_confirmation(req.message, history_contents):
+                print(f"[WARNING] Agent returned escalate action but user did not confirm. Ignoring action. User said: '{req.message}'")
+                safe_reply = (
+                    "I can escalate this issue to a human Support Engineer who can connect to your device remotely and assist you. "
+                    "Would you like me to go ahead with the escalation?"
+                )
+                bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=safe_reply)
+                db.add(bot_msg)
+                db.commit()
+                return ChatReplyOut(
+                    escalate=False,
+                    top_score=top_score,
+                    matches=matches,
+                    tool_used="search_knowledge_base",
+                    tool_status=tools.get_friendly_tool_status("search_knowledge_base")
+                )
+    
+            await broadcast_tool_status(session.id, "escalate_to_l2_support")
+            # Extract user's actual underlying problem from history, not just "raise a ticket"
+            user_problem = None
+            for m in session.messages:
+                if m.role == "user" and m.content and m.kind == "text":
+                    c = m.content.strip()
+                    if not agent.is_escalation_confirmation(c) and not agent.is_greeting(c):
+                        user_problem = c
+                        break
+            if not user_problem:
+                user_problem = req.message
+            user_query = user_problem
+    
+            action_params = agent_result.get("action_params", {})
+            requires_remote = action_params.get("requires_remote_desktop")
+    
+            esc_ticket = await tools.escalate_to_l2_support(
+                session_id=session.id,
+                user_email=current_user.email,
+                issue_summary=user_query,
+                execution_details="User confirmed escalation / ticket creation. Routed to L2 Support Engineer.",
+                requires_remote_desktop=requires_remote
+            )
+    
+            instance_url, _, _, project_key = jira_service._get_jira_config()
+            jira_key = esc_ticket.get("jiraKey", f"{project_key}-{session.id}")
+            jira_url = esc_ticket.get("jiraUrl", f"{instance_url}/browse/{jira_key}")
+            summary = esc_ticket.get("summary", f"[Support Escalation] {user_query[:75]}")
+    
+            try:
+                existing_esc = db.query(JiraTicket).filter(
+                    (JiraTicket.session_id == session.id) | (JiraTicket.ticket_key == jira_key)
+                ).first()
+                if existing_esc:
+                    existing_esc.status = "L2 Confirmed"
+                    existing_esc.ticket_key = jira_key
+                    existing_esc.ticket_url = jira_url
+                    existing_esc.summary = summary
+                    db_ticket = existing_esc
+                else:
                     db_ticket = JiraTicket(
-                        ticket_key=j_key,
+                        ticket_key=jira_key,
                         session_id=session.id,
                         reporter_email=current_user.email,
-                        summary=f"Zoom freezing remediation - {current_user.name}",
+                        summary=summary,
                         user_query=user_query,
-                        transcript="Automated remediation initiated.",
-                        status="In Progress",
-                        priority="Medium",
-                        ticket_url=j_url,
+                        transcript="Full conversation transcript attached to escalation.",
+                        status="L2 Confirmed",
+                        priority="High",
+                        ticket_url=jira_url,
                         is_live=True
                     )
                     db.add(db_ticket)
-                    db.commit()
-                except Exception as e:
-                    print(f"[RemoteAction] Jira ticket creation error: {e}")
-            else:
-                # If db_ticket already exists, ensure it is transitioned to In Progress and assigned to Bot
-                db_ticket.status = "In Progress"
                 db.commit()
-                jira_service.transition_jira_ticket(db_ticket.ticket_key, "In Progress")
-                jira_service.set_jira_assignee(db_ticket.ticket_key, "Bot")
-
-            # Step 2: AFTER Jira ticket is created and transitioned to In Progress, execute the remote action
-            await broadcast_tool_status(session.id, "list_managed_devices")
-            await broadcast_tool_status(session.id, "get_device_info")
-            await broadcast_tool_status(session.id, "clear_zoom_cache")
-            res = tools.clear_zoom_cache(device_id=dev_id)
-            if res.get("success"):
-                dev_name = res.get("deviceName", dev_name)
-                bot_text = (
-                    "⚡ **Remote Action Executed**\n\n"
-                    f"The Zoom cache clear command has been successfully executed on your managed device (**{dev_name}**).\n\n"
-                    "**Actions Executed:**\n"
-                    "• Stopped active Zoom background processes (`Zoom`, `ZoomOpener`, `CptHost`)\n"
-                    "• Purged corrupted application caches and CEF webcache files in `AppData\\Local\\Zoom` and `AppData\\Roaming\\Zoom`\n"
-                    "• Cleaned temporary lock files\n\n"
-                    "> 💬 **Next Steps:** Please launch Zoom again and sign in.\n\n"
-                    "Please test if your meetings and application are working normally. **Did this resolve your issue?**"
-                )
+            except Exception as esc_err:
+                db.rollback()
+                print(f"[Escalation Jira DB Error]: {esc_err}")
+    
+            if bot_reply and ("not have the ability" in bot_reply.lower() or "proper internal channels" in bot_reply.lower()):
+                escalation_reply = "I have raised a support ticket for your issue and escalated it to our Support Engineering team. An engineer will review your issue and follow up with you shortly."
             else:
-                bot_text = (
-                    f"⚠️ Failed to clear Zoom cache on device: {res.get('error')}. "
-                    "Would you like me to escalate this issue to a human Support Engineer who can connect to your device remotely?"
+                escalation_reply = (
+                    bot_reply if bot_reply and ("escalat" in bot_reply.lower() or "ticket" in bot_reply.lower()) else
+                    "I have raised a support ticket for your issue and escalated it to our Support Engineering team. An engineer will review your issue and follow up with you shortly."
                 )
-            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=bot_text)
+            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=escalation_reply)
             db.add(bot_msg)
             db.commit()
             return ChatReplyOut(
-                escalate=False,
+                escalate=True,
                 top_score=1.0,
                 matches=[],
-                tool_used="clear_zoom_cache",
-                tool_status=tools.get_friendly_tool_status("clear_zoom_cache")
+                tool_used="escalate_to_l2_support",
+                tool_status=tools.get_friendly_tool_status("escalate_to_l2_support")
             )
-        except Exception as action_err:
-            print(f"[RemoteAction Execution Error]: {action_err}")
-            fail_text = (
-                f"⚠️ An error occurred while executing the remote fix: {str(action_err)}.\n\n"
-                "Would you like me to escalate this issue to a human Support Engineer who can connect to your device remotely and assist you?"
+    
+        # 4. Check negative unresolved signal (e.g. "still freezing", "didn't work")
+        if agent.is_negative_unresolved_signal(req.message, history_contents):
+            offer_reply = (
+                "I understand the issue is still persisting. I can escalate this directly to a human Support Engineer "
+                "who can review your device diagnostics and connect remotely to assist you. Would you like me to proceed with the escalation?"
             )
-            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=fail_text)
-            db.add(bot_msg)
-            db.commit()
-            return ChatReplyOut(
-                escalate=False,
-                top_score=1.0,
-                matches=[],
-                tool_used="clear_zoom_cache",
-                tool_status="Action completed with error"
-            )
-
-    # 3. Check if user requests escalation to human L2 Support or asks to raise a ticket
-    elif action == "escalate_to_l2_support" or agent.is_escalation_confirmation(req.message, history_contents):
-        # Validate that the user actually confirmed escalation in their most recent message
-        if not agent.is_escalation_confirmation(req.message, history_contents):
-            print(f"[WARNING] Agent returned escalate action but user did not confirm. Ignoring action. User said: '{req.message}'")
-            safe_reply = (
-                "I can escalate this issue to a human Support Engineer who can connect to your device remotely and assist you. "
-                "Would you like me to go ahead with the escalation?"
-            )
-            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=safe_reply)
+            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=offer_reply)
             db.add(bot_msg)
             db.commit()
             return ChatReplyOut(
@@ -357,99 +466,42 @@ async def post_session_message(
                 tool_used="search_knowledge_base",
                 tool_status=tools.get_friendly_tool_status("search_knowledge_base")
             )
-
-        await broadcast_tool_status(session.id, "escalate_to_l2_support")
-        # Extract user's actual underlying problem from history, not just "raise a ticket"
-        user_problem = None
-        for m in session.messages:
-            if m.role == "user" and m.content and m.kind == "text":
-                c = m.content.strip()
-                if not agent.is_escalation_confirmation(c) and not agent.is_greeting(c):
-                    user_problem = c
-                    break
-        if not user_problem:
-            user_problem = req.message
-        user_query = user_problem
-
-        action_params = agent_result.get("action_params", {})
-        requires_remote = action_params.get("requires_remote_desktop")
-
-        esc_ticket = await tools.escalate_to_l2_support(
-            session_id=session.id,
-            user_email=current_user.email,
-            issue_summary=user_query,
-            execution_details="User confirmed escalation / ticket creation. Routed to L2 Support Engineer.",
-            requires_remote_desktop=requires_remote
-        )
-
-        instance_url, _, _, project_key = jira_service._get_jira_config()
-        jira_key = esc_ticket.get("jiraKey", f"{project_key}-{session.id}")
-        jira_url = esc_ticket.get("jiraUrl", f"{instance_url}/browse/{jira_key}")
-        summary = esc_ticket.get("summary", f"[Support Escalation] {user_query[:75]}")
-
-        if not db_ticket:
-            db_ticket = JiraTicket(
-                ticket_key=jira_key,
-                session_id=session.id,
-                reporter_email=current_user.email,
-                summary=summary,
-                user_query=user_query,
-                transcript="Full conversation transcript attached to escalation.",
-                status="L2 Confirmed",
-                priority="High",
-                ticket_url=jira_url,
-                is_live=True
-            )
-            db.add(db_ticket)
-        else:
-            db_ticket.status = "L2 Confirmed"
-
-        if bot_reply and ("not have the ability" in bot_reply.lower() or "proper internal channels" in bot_reply.lower()):
-            escalation_reply = "I have raised a support ticket for your issue and escalated it to our Support Engineering team. An engineer will review your issue and follow up with you shortly."
-        else:
-            escalation_reply = (
-                bot_reply if bot_reply and ("escalat" in bot_reply.lower() or "ticket" in bot_reply.lower()) else
-                "I have raised a support ticket for your issue and escalated it to our Support Engineering team. An engineer will review your issue and follow up with you shortly."
-            )
-        bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=escalation_reply)
+    
+        # Standard grounded conversational response (Triage questions, manual self-help steps, operational guidance)
+        bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=bot_reply)
         db.add(bot_msg)
         db.commit()
         return ChatReplyOut(
-            escalate=True,
-            top_score=1.0,
-            matches=[],
-            tool_used="escalate_to_l2_support",
-            tool_status=tools.get_friendly_tool_status("escalate_to_l2_support")
-        )
-
-    # 4. Check negative unresolved signal (e.g. "still freezing", "didn't work")
-    if agent.is_negative_unresolved_signal(req.message, history_contents):
-        offer_reply = (
-            "I understand the issue is still persisting. I can escalate this directly to a human Support Engineer "
-            "who can review your device diagnostics and connect remotely to assist you. Would you like me to proceed with the escalation?"
-        )
-        bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=offer_reply)
-        db.add(bot_msg)
-        db.commit()
-        return ChatReplyOut(
-            escalate=False,
+            escalate=escalate_needed,
             top_score=top_score,
             matches=matches,
             tool_used="search_knowledge_base",
             tool_status=tools.get_friendly_tool_status("search_knowledge_base")
         )
+    except Exception as top_err:
+        print(f"[FATAL CHAT ERROR in session {session_id}]: {top_err}")
+        import traceback
+        traceback.print_exc()
+        db.rollback()
+        try:
+            safe_reply = (
+                "⚠️ I encountered an issue while processing your request on your device.\n\n"
+                "Would you like me to escalate this issue to a human Support Engineer who can connect remotely and assist you?"
+            )
+            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=safe_reply)
+            db.add(bot_msg)
+            db.commit()
+        except Exception as recovery_err:
+            db.rollback()
+            print(f"[RECOVERY ERROR in session {session_id}]: {recovery_err}")
 
-    # Standard grounded conversational response (Triage questions, manual self-help steps, operational guidance)
-    bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=bot_reply)
-    db.add(bot_msg)
-    db.commit()
-    return ChatReplyOut(
-        escalate=escalate_needed,
-        top_score=top_score,
-        matches=matches,
-        tool_used="search_knowledge_base",
-        tool_status=tools.get_friendly_tool_status("search_knowledge_base")
-    )
+        return ChatReplyOut(
+            escalate=False,
+            top_score=1.0,
+            matches=[],
+            tool_used=None,
+            tool_status=None
+        )
 
 @router.post("/sessions/{session_id}/feedback")
 async def record_feedback(
@@ -480,23 +532,34 @@ async def record_feedback(
         jira_url = esc_ticket.get("jiraUrl", f"{instance_url}/browse/{jira_key}")
         summary = esc_ticket.get("summary", f"[Support Escalation] {user_query[:75]}")
 
-        db_ticket = db.query(JiraTicket).filter(JiraTicket.session_id == session.id).first()
-        if not db_ticket:
-            db_ticket = JiraTicket(
-                ticket_key=jira_key,
-                session_id=session.id,
-                reporter_email=current_user.email,
-                summary=summary,
-                user_query=user_query,
-                transcript="Full conversation transcript attached to escalation.",
-                status="L2 Confirmed",
-                priority="High",
-                ticket_url=jira_url,
-                is_live=True
-            )
-            db.add(db_ticket)
-        else:
-            db_ticket.status = "L2 Confirmed"
+        try:
+            existing_fb = db.query(JiraTicket).filter(
+                (JiraTicket.session_id == session.id) | (JiraTicket.ticket_key == jira_key)
+            ).first()
+            if existing_fb:
+                existing_fb.status = "L2 Confirmed"
+                existing_fb.ticket_key = jira_key
+                existing_fb.ticket_url = jira_url
+                existing_fb.summary = summary
+                db_ticket = existing_fb
+            else:
+                db_ticket = JiraTicket(
+                    ticket_key=jira_key,
+                    session_id=session.id,
+                    reporter_email=current_user.email,
+                    summary=summary,
+                    user_query=user_query,
+                    transcript="Full conversation transcript attached to escalation.",
+                    status="L2 Confirmed",
+                    priority="High",
+                    ticket_url=jira_url,
+                    is_live=True
+                )
+                db.add(db_ticket)
+            db.commit()
+        except Exception as fb_err:
+            db.rollback()
+            print(f"[Feedback Escalation DB Error]: {fb_err}")
 
         bot_msg = ChatMessage(
             session_id=session.id,
@@ -505,7 +568,10 @@ async def record_feedback(
             content="I have escalated your issue to a human Support Engineer. An engineer will review your issue and connect with your device shortly to assist you."
         )
         db.add(bot_msg)
-        db.commit()
+        try:
+            db.commit()
+        except Exception as bot_commit_err:
+            db.rollback()
         return {
             "status": "escalated",
             "jira_ticket": {
