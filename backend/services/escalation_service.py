@@ -4,6 +4,7 @@ for Meridian Tech Helpdesk.
 """
 
 import os
+import re
 import json
 import asyncio
 import time
