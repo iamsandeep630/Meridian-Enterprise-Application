@@ -18,10 +18,14 @@ class MeshCentralAdapter(IRemoteRemediationPort):
         return self._service.list_managed_devices()
 
     def find_device(self, devices: list[dict[str, Any]], query: str | None = None) -> dict[str, Any] | None:
-        return self._service.find_device(devices, query=query)
+        if hasattr(self._service, "find_device"):
+            return self._service.find_device(devices, identifier=query, query=query)
+        return None
 
     def clear_zoom_cache(self, device_id: str | None = None, computer_name: str | None = None) -> dict[str, Any]:
         return self._service.clear_zoom_cache(device_id=device_id, computer_name=computer_name)
 
-    def create_sharing_link(self, device_id: str, duration_minutes: int = 30) -> dict[str, Any]:
-        return self._service.create_sharing_link(device_id=device_id, duration_minutes=duration_minutes)
+    def create_sharing_link(self, device_id: str | None = None, duration_minutes: int = 30) -> dict[str, Any]:
+        if hasattr(self._service, "create_sharing_link"):
+            return self._service.create_sharing_link(device_id=device_id, duration_minutes=duration_minutes)
+        return self._service.create_device_sharing_link(device_id=device_id, duration_minutes=duration_minutes)

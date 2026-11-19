@@ -21,7 +21,6 @@ class IRemoteRemediationPort(Protocol):
         """Executes remote script to stop frozen Zoom processes and purge cached temp files."""
         ...
 
-    def create_sharing_link(self, device_id: str, duration_minutes: int = 30) -> Dict[str, Any]:
+    def create_sharing_link(self, device_id: Optional[str] = None, duration_minutes: int = 30) -> Dict[str, Any]:
         """Generates an ephemeral, time-bounded remote desktop access link."""
         ...
-

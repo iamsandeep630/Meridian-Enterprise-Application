@@ -17,13 +17,13 @@ def get_device_info(device_id: str | None = None) -> dict:
     return meshcentral_service.get_device_info(device_id=device_id)
 
 
-def clear_zoom_cache(device_id: str | None = None) -> dict:
+def clear_zoom_cache(device_id: str | None = None, computer_name: str | None = None) -> dict:
     """
     Executes remote Zoom cache clearing on the user's endpoint via IRemoteRemediationPort.
     Terminates background Zoom processes, purges AppData cache directories,
     and removes temporary files.
     """
-    return Container.get_remediation_port().clear_zoom_cache(device_id=device_id)
+    return Container.get_remediation_port().clear_zoom_cache(device_id=device_id, computer_name=computer_name)
 
 
 def create_device_sharing_link(device_id: str | None = None, duration_minutes: int = 30) -> dict:

@@ -1,3 +1,4 @@
+from services import meshcentral_service
 """
 Agent Tools Package for Meridian Enterprise Helpdesk.
 Consolidates modular toolsets across retrieval, remediation, ticketing, and escalation.
@@ -99,6 +100,7 @@ __all__ = [
     "jira_create_ticket",
     "jira_update_ticket",
     "list_managed_devices",
+    "meshcentral_service",
     "search_knowledge_base",
 ]
 

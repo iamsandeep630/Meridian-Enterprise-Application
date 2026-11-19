@@ -149,19 +149,20 @@ def list_managed_devices() -> dict:
         return {"success": False, "devices": [], "error": str(e)}
 
 
-def find_device(devices: list[dict], identifier: str | None = None) -> dict | None:
+def find_device(devices: list[dict], identifier: str | None = None, query: str | None = None) -> dict | None:
     """Matches a device by ID, hostname, logged-in user, or defaults to the first connected device."""
+    target = query if identifier is None else identifier
     if not devices:
         return None
-    if not identifier:
+    if not target:
         online = [d for d in devices if d.get("conn") == 1 or d.get("status") == "Online"]
         return online[0] if online else devices[0]
 
-    id_str = str(identifier).strip().lower()
+    id_str = str(target).strip().lower()
 
     # 1. Exact node ID match
     for d in devices:
-        if d.get("_id") == identifier or d.get("id") == identifier:
+        if d.get("_id") == target or d.get("id") == target:
             return d
 
     # 2. Exact name match
@@ -201,7 +202,7 @@ def get_device_info(device_id: str | None = None) -> dict:
     return {"success": True, "device": device}
 
 
-def clear_zoom_cache(device_id: str | None = None) -> dict:
+def clear_zoom_cache(device_id: str | None = None, computer_name: str | None = None) -> dict:
     """
     Clears Zoom application cache on a remote device via MeshCentral.
     Executes a comprehensive PowerShell cleanup script directly using --powershell and --reply.
@@ -211,9 +212,10 @@ def clear_zoom_cache(device_id: str | None = None) -> dict:
         if not dev_res.get("success") or not dev_res.get("devices"):
             return {"success": False, "error": "No managed devices found in MeshCentral"}
 
-        device = find_device(dev_res["devices"], device_id)
+        target_id = device_id or computer_name
+        device = find_device(dev_res["devices"], target_id)
         if not device:
-            return {"success": False, "error": f"Device '{device_id}' not found"}
+            return {"success": False, "error": f"Device '{target_id}' not found"}
 
         if device.get("conn") != 1 and device.get("status") != "Online":
             return {
@@ -318,12 +320,12 @@ $log -join "`n"
 
         # Run via meshctrl with --powershell and --reply for direct execution and captured verification
         try:
-            output = run_meshctrl(["RunCommand", "--id", actual_id, "--run", ps_script, "--powershell", "--reply"], timeout_sec=25)
+            output = run_meshctrl(["RunCommand", "--id", actual_id, "--run", ps_script, "--powershell", "--reply"], timeout_sec=15)
             print(f"[MeshCentral] Zoom cache clear completed on {device.get('name')}:\n{output}")
         except Exception as run_err:
             print(f"[MeshCentral] Notice: reply timeout or error ({run_err}), falling back to async execution")
             try:
-                output = run_meshctrl(["RunCommand", "--id", actual_id, "--run", ps_script, "--powershell"], timeout_sec=10)
+                output = run_meshctrl(["RunCommand", "--id", actual_id, "--run", ps_script, "--powershell"], timeout_sec=6)
             except Exception:
                 output = str(run_err)
 
@@ -502,3 +504,4 @@ if ($wingetExe) {
 
 # Backward compatibility aliases
 get_meshcentral_devices = list_managed_devices
+create_sharing_link = create_device_sharing_link

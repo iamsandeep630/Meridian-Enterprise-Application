@@ -232,94 +232,111 @@ async def post_session_message(
             if m.role == "user" and m.content and m.kind == "text":
                 user_query = m.content
 
-        # Step 1: User has confirmed to proceed with remote action.
-        # CRITICAL REQUIREMENT: Self-help chatbot MUST create the Jira ticket with status 'In Progress' FIRST before executing any remote action!
-        await broadcast_tool_status(session.id, "jira_create_ticket")
+        try:
+            # Step 1: User has confirmed to proceed with remote action.
+            # CRITICAL REQUIREMENT: Self-help chatbot MUST create the Jira ticket with status 'In Progress' FIRST before executing any remote action!
+            await broadcast_tool_status(session.id, "jira_create_ticket")
 
-        dev_res = tools.meshcentral_service.list_managed_devices()
-        device = tools.meshcentral_service.find_device(dev_res.get("devices", [])) if dev_res.get("success") else None
-        dev_name = device.get("name", "AVDGLS5-4") if device else "AVDGLS5-4"
-        dev_os = device.get("os", "Microsoft Windows 11 Enterprise") if device else "Microsoft Windows 11 Enterprise"
-        dev_ip = device.get("ip", "10.73.87.230") if device else "10.73.87.230"
-        dev_users = device.get("currentUsers", [current_user.email]) if device else [current_user.email]
-        dev_id = device.get("id") if device else None
+            dev_res = meshcentral_service.list_managed_devices()
+            device = meshcentral_service.find_device(dev_res.get("devices", [])) if dev_res.get("success") else None
+            dev_name = device.get("name", "AVDGLS5-4") if device else "AVDGLS5-4"
+            dev_os = device.get("os", "Microsoft Windows 11 Enterprise") if device else "Microsoft Windows 11 Enterprise"
+            dev_ip = device.get("ip", "10.73.87.230") if device else "10.73.87.230"
+            dev_users = device.get("currentUsers", [current_user.email]) if device else [current_user.email]
+            dev_id = device.get("id") if device else None
 
-        device_diag = {
-            "name": dev_name,
-            "os": dev_os,
-            "ip": dev_ip,
-            "currentUsers": dev_users,
-            "id": dev_id
-        }
+            device_diag = {
+                "name": dev_name,
+                "os": dev_os,
+                "ip": dev_ip,
+                "currentUsers": dev_users,
+                "id": dev_id
+            }
 
-        # Create or update Jira ticket with status 'In Progress' and assignee 'Bot'
-        if not db_ticket:
-            try:
-                remed_ticket = await escalation_service.create_remediation_ticket(
-                    session_id=session.id,
-                    user_email=current_user.email,
-                    issue_summary=f"Zoom freezing remediation - {current_user.name}",
-                    device_info=device_diag,
-                    execution_details="User confirmed automated remote Zoom cache clearing. Remediation initiated by Bot."
-                )
-                instance_url, _, _, project_key = jira_service._get_jira_config()
-                j_key = remed_ticket.get("jiraKey", f"{project_key}-{session.id}")
-                j_url = remed_ticket.get("jiraUrl", f"{instance_url}/browse/{j_key}")
-                db_ticket = JiraTicket(
-                    ticket_key=j_key,
-                    session_id=session.id,
-                    reporter_email=current_user.email,
-                    summary=f"Zoom freezing remediation - {current_user.name}",
-                    user_query=user_query,
-                    transcript="Automated remediation initiated.",
-                    status="In Progress",
-                    priority="Medium",
-                    ticket_url=j_url,
-                    is_live=True
-                )
-                db.add(db_ticket)
+            # Create or update Jira ticket with status 'In Progress' and assignee 'Bot'
+            if not db_ticket:
+                try:
+                    remed_ticket = await escalation_service.create_remediation_ticket(
+                        session_id=session.id,
+                        user_email=current_user.email,
+                        issue_summary=f"Zoom freezing remediation - {current_user.name}",
+                        device_info=device_diag,
+                        execution_details="User confirmed automated remote Zoom cache clearing. Remediation initiated by Bot."
+                    )
+                    instance_url, _, _, project_key = jira_service._get_jira_config()
+                    j_key = remed_ticket.get("jiraKey", f"{project_key}-{session.id}")
+                    j_url = remed_ticket.get("jiraUrl", f"{instance_url}/browse/{j_key}")
+                    db_ticket = JiraTicket(
+                        ticket_key=j_key,
+                        session_id=session.id,
+                        reporter_email=current_user.email,
+                        summary=f"Zoom freezing remediation - {current_user.name}",
+                        user_query=user_query,
+                        transcript="Automated remediation initiated.",
+                        status="In Progress",
+                        priority="Medium",
+                        ticket_url=j_url,
+                        is_live=True
+                    )
+                    db.add(db_ticket)
+                    db.commit()
+                except Exception as e:
+                    print(f"[RemoteAction] Jira ticket creation error: {e}")
+            else:
+                # If db_ticket already exists, ensure it is transitioned to In Progress and assigned to Bot
+                db_ticket.status = "In Progress"
                 db.commit()
-            except Exception as e:
-                print(f"[RemoteAction] Jira ticket creation error: {e}")
-        else:
-            # If db_ticket already exists, ensure it is transitioned to In Progress and assigned to Bot
-            db_ticket.status = "In Progress"
-            db.commit()
-            jira_service.transition_jira_ticket(db_ticket.ticket_key, "In Progress")
-            jira_service.set_jira_assignee(db_ticket.ticket_key, "Bot")
+                jira_service.transition_jira_ticket(db_ticket.ticket_key, "In Progress")
+                jira_service.set_jira_assignee(db_ticket.ticket_key, "Bot")
 
-        # Step 2: AFTER Jira ticket is created and transitioned to In Progress, execute the remote action
-        await broadcast_tool_status(session.id, "list_managed_devices")
-        await broadcast_tool_status(session.id, "get_device_info")
-        await broadcast_tool_status(session.id, "clear_zoom_cache")
-        res = tools.clear_zoom_cache(device_id=dev_id)
-        if res.get("success"):
-            dev_name = res.get("deviceName", dev_name)
-            bot_text = (
-                "⚡ **Remote Action Executed**\n\n"
-                f"The Zoom cache clear command has been successfully executed on your managed device (**{dev_name}**).\n\n"
-                "**Actions Executed:**\n"
-                "• Stopped active Zoom background processes (`Zoom`, `ZoomOpener`, `CptHost`)\n"
-                "• Purged corrupted application caches and CEF webcache files in `AppData\\Local\\Zoom` and `AppData\\Roaming\\Zoom`\n"
-                "• Cleaned temporary lock files\n\n"
-                "> 💬 **Next Steps:** Please launch Zoom again and sign in.\n\n"
-                "Please test if your meetings and application are working normally. **Did this resolve your issue?**"
+            # Step 2: AFTER Jira ticket is created and transitioned to In Progress, execute the remote action
+            await broadcast_tool_status(session.id, "list_managed_devices")
+            await broadcast_tool_status(session.id, "get_device_info")
+            await broadcast_tool_status(session.id, "clear_zoom_cache")
+            res = tools.clear_zoom_cache(device_id=dev_id)
+            if res.get("success"):
+                dev_name = res.get("deviceName", dev_name)
+                bot_text = (
+                    "⚡ **Remote Action Executed**\n\n"
+                    f"The Zoom cache clear command has been successfully executed on your managed device (**{dev_name}**).\n\n"
+                    "**Actions Executed:**\n"
+                    "• Stopped active Zoom background processes (`Zoom`, `ZoomOpener`, `CptHost`)\n"
+                    "• Purged corrupted application caches and CEF webcache files in `AppData\\Local\\Zoom` and `AppData\\Roaming\\Zoom`\n"
+                    "• Cleaned temporary lock files\n\n"
+                    "> 💬 **Next Steps:** Please launch Zoom again and sign in.\n\n"
+                    "Please test if your meetings and application are working normally. **Did this resolve your issue?**"
+                )
+            else:
+                bot_text = (
+                    f"⚠️ Failed to clear Zoom cache on device: {res.get('error')}. "
+                    "Would you like me to escalate this issue to a human Support Engineer who can connect to your device remotely?"
+                )
+            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=bot_text)
+            db.add(bot_msg)
+            db.commit()
+            return ChatReplyOut(
+                escalate=False,
+                top_score=1.0,
+                matches=[],
+                tool_used="clear_zoom_cache",
+                tool_status=tools.get_friendly_tool_status("clear_zoom_cache")
             )
-        else:
-            bot_text = (
-                f"⚠️ Failed to clear Zoom cache on device: {res.get('error')}. "
-                "Would you like me to escalate this issue to a human Support Engineer who can connect to your device remotely?"
+        except Exception as action_err:
+            print(f"[RemoteAction Execution Error]: {action_err}")
+            fail_text = (
+                f"⚠️ An error occurred while executing the remote fix: {str(action_err)}.\n\n"
+                "Would you like me to escalate this issue to a human Support Engineer who can connect to your device remotely and assist you?"
             )
-        bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=bot_text)
-        db.add(bot_msg)
-        db.commit()
-        return ChatReplyOut(
-            escalate=False,
-            top_score=1.0,
-            matches=[],
-            tool_used="clear_zoom_cache",
-            tool_status=tools.get_friendly_tool_status("clear_zoom_cache")
-        )
+            bot_msg = ChatMessage(session_id=session.id, role="bot", kind="text", content=fail_text)
+            db.add(bot_msg)
+            db.commit()
+            return ChatReplyOut(
+                escalate=False,
+                top_score=1.0,
+                matches=[],
+                tool_used="clear_zoom_cache",
+                tool_status="Action completed with error"
+            )
 
     # 3. Check if user requests escalation to human L2 Support or asks to raise a ticket
     elif action == "escalate_to_l2_support" or agent.is_escalation_confirmation(req.message, history_contents):

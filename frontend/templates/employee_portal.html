@@ -4281,6 +4281,19 @@
               typingText.textContent = replyData.tool_status;
             }
           } catch(e){}
+        } else {
+          if (typingBar) typingBar.style.display = "none";
+          let errMsg = "The Helpdesk service took longer than expected to complete the remote action.";
+          try {
+            const errData = await postRes.json();
+            if (errData.detail) errMsg = errData.detail;
+          } catch(e){}
+          viewport.innerHTML += renderChatMessage({
+            role: "bot",
+            content: `⚠️ **Remediation Notice:** ${errMsg}\n\nWould you like me to escalate this issue to a human Support Engineer who can assist you directly?`
+          });
+          setTimeout(() => { viewport.scrollTop = viewport.scrollHeight; }, 30);
+          return;
         }
 
         if (typingBar) typingBar.style.display = "none";
