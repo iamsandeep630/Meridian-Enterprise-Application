@@ -6,6 +6,11 @@
 
 FROM python:3.11-slim-bookworm as base
 
+# Copy Node.js runtime from official Node image (shares exact same Debian Bookworm glibc base)
+COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:20-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node:20-bookworm-slim /usr/local/bin/npm /usr/local/bin/npm
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -19,14 +24,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including Node.js & npm for MeshCentral runner
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    nodejs \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install Python dependencies with CPU-optimized PyTorch
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -37,15 +34,15 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 
-# Install minimal Node.js runner dependencies for meshctrl.js
-RUN cd /app/backend/bin && npm install --omit=dev
+# Ensure Node modules are installed if not present
+RUN cd /app/backend/bin && if [ ! -d "node_modules/ws" ]; then npm install --omit=dev; fi
 
 # Expose FastAPI port
 EXPOSE 8001
 
-# Healthcheck
+# Healthcheck using native Python standard library (no external curl dependency)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')" || exit 1
 
 # Start FastAPI application with uvicorn
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8001"]
