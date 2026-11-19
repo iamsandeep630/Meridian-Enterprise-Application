@@ -16,7 +16,15 @@ load_dotenv(BASE_DIR / ".env")
 # Server Config
 PORT = int(os.getenv("PORT", "8001"))
 HOST = os.getenv("HOST", "0.0.0.0")
-PUBLIC_APP_URL = (os.getenv("PUBLIC_APP_URL") or os.getenv("ENTERPRISE_APP_URL") or f"http://localhost:{PORT}").strip().rstrip("/")
+
+DEPLOYED_ENTERPRISE_URL = "https://meridian-nlb-7ae659c9d57f1a53.elb.us-east-1.amazonaws.com"
+_env_public_url = os.getenv("PUBLIC_APP_URL") or os.getenv("ENTERPRISE_APP_URL")
+if _env_public_url and "localhost" not in _env_public_url and "127.0.0.1" not in _env_public_url:
+    PUBLIC_APP_URL = _env_public_url.strip().rstrip("/")
+elif PORT == 80 or os.getenv("AWS_EXECUTION_ENV") or os.getenv("ECS_CONTAINER_METADATA_URI"):
+    PUBLIC_APP_URL = DEPLOYED_ENTERPRISE_URL
+else:
+    PUBLIC_APP_URL = (_env_public_url or DEPLOYED_ENTERPRISE_URL).strip().rstrip("/")
 
 # Security & JWT
 JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key-change-in-production")

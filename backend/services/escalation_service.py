@@ -20,7 +20,10 @@ except ImportError:
 try:
     from config import PUBLIC_APP_URL
 except ImportError:
-    PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", "http://localhost:8001").rstrip("/")
+    PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", "https://meridian-nlb-7ae659c9d57f1a53.elb.us-east-1.amazonaws.com").rstrip("/")
+
+if not PUBLIC_APP_URL or "localhost" in PUBLIC_APP_URL or "127.0.0.1" in PUBLIC_APP_URL:
+    PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL") or os.getenv("ENTERPRISE_APP_URL") or "https://meridian-nlb-7ae659c9d57f1a53.elb.us-east-1.amazonaws.com"
 
 load_dotenv()
 
@@ -211,6 +214,7 @@ async def get_dashboard_tickets() -> list[dict]:
             merged.append(local)
 
     # Secondary pass to ensure all have chatLink and expiry
+    public_base = PUBLIC_APP_URL or "https://meridian-nlb-7ae659c9d57f1a53.elb.us-east-1.amazonaws.com"
     for t in merged:
         cid = t.get("conversationId")
         if not cid:
@@ -218,10 +222,17 @@ async def get_dashboard_tickets() -> list[dict]:
             for c_id, conv in conversation_store.items():
                 if (t.get("jiraKey") and conv.get("jiraKey") == t.get("jiraKey")) or (t.get("id") and conv.get("ticketId") == t.get("id")):
                     t["conversationId"] = c_id
-                    t["chatLink"] = f"{PUBLIC_APP_URL}/support/chat/{c_id}"
+                    t["chatLink"] = f"{public_base}/support/chat/{c_id}"
                     break
         elif not t.get("chatLink"):
-            t["chatLink"] = f"{PUBLIC_APP_URL}/support/chat/{cid}"
+            t["chatLink"] = f"{public_base}/support/chat/{cid}"
+
+        if t.get("chatLink"):
+            t["chatLink"] = re.sub(
+                r"https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.\d+\.\d+\.\d+)(:\d+)?",
+                public_base.rstrip("/"),
+                t["chatLink"]
+            )
 
         if t.get("sharingLink") and not t.get("linkExpiresAt") and t.get("createdAt"):
             try:
@@ -262,7 +273,8 @@ async def escalate_session(
     cid = str(session_id)
     now = datetime.utcnow()
     now_iso = now.isoformat() + "Z"
-    chat_link = f"{PUBLIC_APP_URL}/support/chat/{cid}"
+    public_base = PUBLIC_APP_URL or "https://meridian-nlb-7ae659c9d57f1a53.elb.us-east-1.amazonaws.com"
+    chat_link = f"{public_base.rstrip('/')}/support/chat/{cid}"
 
     # Part 2 & Part 3: Evaluate LLM classification with Python safety net fallback
     if requires_remote_desktop is False:
@@ -314,6 +326,13 @@ async def escalate_session(
     if cid in conversation_store:
         chat_history = conversation_store[cid].get("messages", [])
 
+    esc_summary = jira_service.generate_escalation_summary(
+        user_query=issue_summary,
+        chat_history=chat_history,
+        device_info=dev_diag,
+        execution_details=execution_details
+    )
+
     jira_res = jira_service.create_jira_issue(
         session_id=session_id,
         user_email=user_email,
@@ -321,11 +340,18 @@ async def escalate_session(
         chat_history=chat_history,
         device_info=dev_diag,
         sharing_link=sharing_link,
-        chat_link=chat_link
+        chat_link=chat_link,
+        escalation_summary=esc_summary
     )
     instance_url, _, _, project_key = jira_service._get_jira_config()
     jira_key = jira_res.get("ticket_key", f"{project_key}-{session_id}")
     jira_url = jira_res.get("ticket_url", f"{instance_url}/browse/{jira_key}")
+
+    formatted_summary = (
+        f"• Escalation Reason: {esc_summary['reason']}\n"
+        f"• Steps Followed: {esc_summary['steps_followed']}\n"
+        f"• Resolution Limitation: {esc_summary['resolution_limitation']}"
+    )
 
     # 3. Create Ticket Record
     esc_id = f"ESC-{session_id}-{uuid.uuid4().hex[:4].upper()}"
@@ -341,7 +367,8 @@ async def escalate_session(
         "currentUsers": current_users,
         "issueSummary": issue_summary,
         "summary": issue_summary,
-        "executionDetails": execution_details or "Remediation session escalated to L2 Support Engineer.",
+        "executionDetails": formatted_summary,
+        "escalationSummary": esc_summary,
         "sharingLink": sharing_link,
         "conversationId": cid,
         "chatLink": chat_link,
@@ -421,7 +448,8 @@ async def create_remediation_ticket(
     cid = str(session_id)
     now = datetime.utcnow()
     now_iso = now.isoformat() + "Z"
-    chat_link = f"{PUBLIC_APP_URL}/support/chat/{cid}"
+    public_base = PUBLIC_APP_URL or "https://meridian-nlb-7ae659c9d57f1a53.elb.us-east-1.amazonaws.com"
+    chat_link = f"{public_base.rstrip('/')}/support/chat/{cid}"
 
     device_name = (device_info or {}).get("name", "AVDGLS5-4")
     device_os = (device_info or {}).get("os", "Microsoft Windows 11 Enterprise")
