@@ -107,6 +107,11 @@ jobs:
     needs: ci-quality-gate
 
     steps:
+      - name: Print running container logs
+        run: |
+          echo "=== Capturing recent container logs before rebuild ==="
+          docker logs --tail 200 meridian-enterprise || true
+
       - name: Build Docker images
         run: |
           echo "Building Docker container image: meridian-enterprise:latest..."
