@@ -12,6 +12,7 @@ on:
       - 'frontend/**'
       - 'tests/**'
       - 'Dockerfile'
+      - 'infra/**'
       - '.github/workflows/deploy-ec2.yml'
   workflow_dispatch:
     inputs:
