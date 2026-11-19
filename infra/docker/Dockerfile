@@ -13,8 +13,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8001 \
     MESHCTRL_PATH=/app/backend/bin/meshctrl.js \
     MESHCENTRAL_URL=wss://meshcentral-nlb-57f1b2a74defca19.elb.us-east-1.amazonaws.com \
-    MESHCENTRAL_USER=admin-sd \
-    MESHCENTRAL_PASS=smartfix@1
+    MESHCENTRAL_USER=admin \
+    MESHCENTRAL_PASS=admin-smartfix
 
 # Set working directory
 WORKDIR /app
