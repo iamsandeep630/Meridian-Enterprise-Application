@@ -138,6 +138,16 @@ jobs:
           docker inspect meridian-enterprise:latest --format '{{json .Config.Env}}' > /opt/meridian/sbom/meridian-env-manifest.json
           echo "SBOM metadata generated successfully."
 
+      - name: Push Image to Amazon ECR
+        run: |
+          echo "Tagging and pushing image to Amazon ECR..."
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 317492541707.dkr.ecr.us-east-1.amazonaws.com
+          docker tag meridian-enterprise:latest 317492541707.dkr.ecr.us-east-1.amazonaws.com/meridian-enterprise-backend:latest
+          docker tag meridian-enterprise:latest 317492541707.dkr.ecr.us-east-1.amazonaws.com/meridian-enterprise-backend:${{ github.sha }}
+          docker push 317492541707.dkr.ecr.us-east-1.amazonaws.com/meridian-enterprise-backend:latest
+          docker push 317492541707.dkr.ecr.us-east-1.amazonaws.com/meridian-enterprise-backend:${{ github.sha }}
+          echo "Image successfully pushed to ECR."
+
   # ==============================================================================
   # 3. CONTINUOUS DEPLOYMENT: ZERO-DOWNTIME ROLLOUT & HEALTH VERIFICATION
   # ==============================================================================
@@ -178,3 +188,25 @@ jobs:
             echo "No previous backup image found to restore."
           fi
           exit 1
+
+  # ==============================================================================
+  # 4. CONTINUOUS DEPLOYMENT: AWS ECS FARGATE SERVICE REFRESH
+  # ==============================================================================
+  deploy-to-ecs-fargate:
+    name: Deploy to AWS ECS Fargate
+    runs-on: ubuntu-latest
+    needs: [build-docker-images, deploy-to-ec2]
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Force ECS Fargate Deployment
+        run: |
+          echo "Updating ECS service meridian-enterprise-service to roll out latest ECR container..."
+          aws ecs update-service --cluster meridian-cluster --service meridian-enterprise-service --force-new-deployment --region us-east-1
+          echo "ECS service update triggered successfully."

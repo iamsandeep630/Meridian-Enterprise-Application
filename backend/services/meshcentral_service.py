@@ -93,10 +93,8 @@ def run_meshctrl(args: list[str], timeout_sec: int = 30) -> str:
     if not cfg["meshctrl_path"] or not os.path.exists(cfg["meshctrl_path"]):
         raise FileNotFoundError(f"meshctrl.js not found at: {cfg['meshctrl_path']}")
 
-    # Add --ignorecert for localhost/self-signed certificates if using wss://localhost
-    ignore_cert = []
-    if "localhost" in cfg["url"].lower() or "127.0.0.1" in cfg["url"]:
-        ignore_cert = ["--ignorecert"]
+    # Always pass --ignorecert for self-signed certificates on NLB / internal domains / localhost
+    ignore_cert = ["--ignorecert"]
 
     full_cmd = [
         "node",
@@ -108,6 +106,21 @@ def run_meshctrl(args: list[str], timeout_sec: int = 30) -> str:
         *ignore_cert
     ]
 
+    # Configure environment with NODE_PATH pointing to bundled node_modules
+    env = os.environ.copy()
+    node_dirs = [
+        os.path.join(os.path.dirname(cfg["meshctrl_path"]), "node_modules"),
+        "/usr/local/lib/node_modules",
+        "/app/backend/bin/node_modules",
+        "/app/node_modules"
+    ]
+    cur_np = env.get("NODE_PATH", "")
+    paths = [p for p in node_dirs if os.path.exists(p)]
+    if cur_np:
+        paths.append(cur_np)
+    if paths:
+        env["NODE_PATH"] = os.pathsep.join(paths)
+
     try:
         proc = subprocess.run(
             full_cmd,
@@ -115,6 +128,7 @@ def run_meshctrl(args: list[str], timeout_sec: int = 30) -> str:
             text=True,
             timeout=timeout_sec,
             cwd=os.path.dirname(cfg["meshctrl_path"]),
+            env=env,
             check=False
         )
         if proc.returncode != 0 and not proc.stdout.strip():
@@ -132,7 +146,20 @@ def list_managed_devices() -> dict:
         output = run_meshctrl(["ListDevices", "--json"])
         if not output:
             return {"success": False, "devices": [], "error": "Empty response from meshctrl"}
-        devices_raw = json.loads(output)
+
+        json_str = output.strip()
+        if not json_str.startswith("[") and "[" in json_str:
+            start = json_str.find("[")
+            end = json_str.rfind("]") + 1
+            if start != -1 and end != 0:
+                json_str = json_str[start:end]
+        elif not json_str.startswith("{") and "{" in json_str:
+            start = json_str.find("{")
+            end = json_str.rfind("}") + 1
+            if start != -1 and end != 0:
+                json_str = json_str[start:end]
+
+        devices_raw = json.loads(json_str)
         devices = []
         for d in devices_raw:
             devices.append({
@@ -181,11 +208,12 @@ def find_device(devices: list[dict], identifier: str | None = None, query: str |
         if d.get("name") and id_str in d.get("name").lower():
             return d
 
-    # 5. Fallback if single device exists
-    if len(devices) == 1:
-        return devices[0]
+    # 5. Fallback to first online connected device, or first device
+    online = [d for d in devices if d.get("conn") == 1 or d.get("status") == "Online"]
+    if online:
+        return online[0]
 
-    return None
+    return devices[0]
 
 
 def get_device_info(device_id: str | None = None) -> dict:

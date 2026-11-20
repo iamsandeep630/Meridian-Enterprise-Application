@@ -28,6 +28,7 @@ MANIFEST
 
 # Virtual Environments
 node_modules/
+!backend/bin/node_modules/
 .env/
 .venv/
 env/

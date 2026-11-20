@@ -6,14 +6,18 @@
 
 FROM python:3.11-slim-bookworm as base
 
-# Copy Node.js runtime from official Node image (shares exact same Debian Bookworm glibc base)
+# Copy Node.js runtime and npm from official Node image (shares exact same Debian Bookworm glibc base)
 COPY --from=node:20-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:20-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node:20-bookworm-slim /usr/local/bin/npm /usr/local/bin/npm
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm || true
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/backend \
     PORT=8001 \
+    NODE_PATH=/usr/local/lib/node_modules:/app/backend/bin/node_modules \
     MESHCTRL_PATH=/app/backend/bin/meshctrl.js \
     MESHCENTRAL_URL=wss://meshcentral-nlb-57f1b2a74defca19.elb.us-east-1.amazonaws.com \
     MESHCENTRAL_USER=admin \
