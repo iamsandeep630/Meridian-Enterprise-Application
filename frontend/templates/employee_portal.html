@@ -2853,7 +2853,7 @@
 
         <!-- ==================== TAB 5: SELF HELP CHAT ==================== -->
     <div class="tab-pane" id="tabAssistant">
-      <div class="helpdesk-chat-app" id="helpdeskChatApp" data-theme="dark">
+      <div class="helpdesk-chat-app" id="helpdeskChatApp" data-theme="light">
         <!-- Ambient Animated Background -->
         <div class="bg-grid"></div>
         <div class="bg-glow bg-glow-1"></div>
@@ -2925,13 +2925,13 @@
               </button>
 
               <!-- Theme Toggle Button -->
-              <button class="theme-toggle-btn" id="chatThemeToggleBtn" onclick="toggleChatTheme()" title="Switch theme" aria-label="Toggle theme">
+              <button class="theme-toggle-btn" id="chatThemeToggleBtn" onclick="toggleChatTheme()" title="Switch to dark mode" aria-label="Toggle theme">
                 <span class="theme-icon" id="chatThemeIcon">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
                   </svg>
                 </span>
-                <span class="theme-toggle-text" id="chatThemeText">Light</span>
+                <span class="theme-toggle-text" id="chatThemeText">Dark</span>
               </button>
             </div>
           </header>
@@ -3827,8 +3827,8 @@
   function toggleChatTheme() {
     const app = document.getElementById("helpdeskChatApp");
     if (!app) return;
-    const curTheme = app.getAttribute("data-theme") || "dark";
-    const nextTheme = (curTheme === "dark") ? "light" : "dark";
+    const curTheme = app.getAttribute("data-theme") || "light";
+    const nextTheme = (curTheme === "light") ? "dark" : "light";
     app.setAttribute("data-theme", nextTheme);
     try { localStorage.setItem("helpdesk_theme", nextTheme); } catch(e){}
     updateThemeToggleBtn(nextTheme);
@@ -3867,7 +3867,7 @@
     const ov = document.getElementById("sidebarOverlay");
     if (ov) ov.classList.remove("active");
 
-    const savedTheme = localStorage.getItem("helpdesk_theme") || "dark";
+    const savedTheme = localStorage.getItem("helpdesk_theme") || "light";
     const app = document.getElementById("helpdeskChatApp");
     if (app) app.setAttribute("data-theme", savedTheme);
     updateThemeToggleBtn(savedTheme);

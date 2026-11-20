@@ -134,13 +134,14 @@ def generate_escalation_summary(
     user_query: str,
     chat_history: list[dict] | None = None,
     device_info: dict | None = None,
-    execution_details: str = ""
+    execution_details: str = "",
+    is_bot_remediation: bool = False
 ) -> dict:
     """
     Generates a structured diagnostic escalation summary for Jira Cloud tickets:
-    1. Escalation Reason (Why the issue is being escalated)
-    2. Steps Followed by Self Help Agent (Actions, KB scans, diagnostics attempted)
-    3. Resolution Limitation (Why Self Help Agent could not provide resolution)
+    1. Escalation/Remediation Reason
+    2. Steps Followed by Self Help Agent
+    3. Resolution Limitation / Autonomous Remediation Plan
     """
     clean_q = (user_query or "").strip()
     
@@ -168,8 +169,26 @@ def generate_escalation_summary(
 
     full_text = (clean_q + " " + " ".join(user_messages) + " " + execution_details).lower()
 
+    # Scenario 1: Bot Automated Remediation (e.g. Zoom Cache Clear / Process Reset)
+    is_auto_remediation = is_bot_remediation or any(k in full_text for k in [
+        "cache clear", "clear_zoom_cache", "clear zoom cache", "zoom cache",
+        "automated remediation", "remediation initiated by bot", "zoom freezing remediation"
+    ])
+
+    if is_auto_remediation:
+        dev_name = (device_info.get("name") or device_info.get("deviceName")) if device_info else "Managed Endpoint"
+        reason = f"User reported Zoom application issue on managed device ({dev_name}). Automated remediation initiated."
+        steps_followed = (
+            "Diagnosed Zoom application launch/cache corruption issue; "
+            "obtained user confirmation and executing automated remote Zoom cache purge, process termination, and temporary file cleanup via MeshCentral."
+        )
+        resolution_limitation = (
+            "Issue is being resolved autonomously by the Self Help Agent using automated endpoint remediation tools. "
+            "Self Help Agent is equipped with the necessary diagnostic and remote execution capabilities; no L2 Support team escalation is required. Assignee: Bot."
+        )
+
     # Scenario 2: Catalog / Missing Product in Dropdown (e.g., 4K Webcam Pro)
-    if any(k in full_text for k in ["webcam", "dropdown", "catalog", "master data", "missing product", "missing from dropdown"]):
+    elif any(k in full_text for k in ["webcam", "dropdown", "catalog", "master data", "missing product", "missing from dropdown"]):
         reason = "User reported that '4K Webcam Pro' is missing from the invoice product dropdown catalog." if "webcam" in full_text else f"User reported missing product entry from invoice dropdown: '{clean_q}'."
         steps_followed = (
             "Queried Confluence Knowledge Base via Amazon Bedrock KB for invoice product catalog schemas; "
@@ -260,9 +279,9 @@ def create_jira_issue(
 
     if is_bot:
         summary = f"[Automated Remediation] {clean_query[:70]}"
-        labels = ["Bot", "Auto-Remediation", "MeshCentral-Managed"]
-        heading_title = "Automated Device Remediation"
-        assignee_label = "Bot (AI Helpdesk Assistant)"
+        labels = ["Bot", "Auto-Remediation", "Self-Help-Resolved", "MeshCentral-Managed"]
+        heading_title = "Automated Device Remediation (Self Help Agent)"
+        assignee_label = "Bot"
     else:
         summary = f"[Support Escalation] {clean_query[:75]}"
         labels = ["Support-Engineer", "L2-Escalated", "MeshCentral-Managed"]
@@ -306,7 +325,8 @@ def create_jira_issue(
         escalation_summary = generate_escalation_summary(
             user_query=clean_query,
             chat_history=chat_history,
-            device_info=device_info
+            device_info=device_info,
+            is_bot_remediation=is_bot
         )
 
     # Build description sections (wiki-style, will be converted to ADF for v3)
@@ -320,12 +340,20 @@ def create_jira_issue(
     ]
 
     if escalation_summary:
-        desc_parts.extend([
-            "h3. Self Help Agent Escalation Summary & Diagnostic Insights",
-            f"* *Escalation Reason:* {escalation_summary.get('reason', '')}",
-            f"* *Steps Followed by Self Help Agent:* {escalation_summary.get('steps_followed', '')}",
-            f"* *Resolution Limitation (Why Self-Help Could Not Resolve):* {escalation_summary.get('resolution_limitation', '')}"
-        ])
+        if is_bot:
+            desc_parts.extend([
+                "h3. Self Help Agent Automated Remediation Plan & Execution Summary",
+                f"* *Issue Summary:* {escalation_summary.get('reason', '')}",
+                f"* *Steps Followed by Self Help Agent:* {escalation_summary.get('steps_followed', '')}",
+                f"* *Resolution Status:* Resolved autonomously by Self Help Agent using automated remediation tools. Assignee: Bot (No L2 Support team intervention required)."
+            ])
+        else:
+            desc_parts.extend([
+                "h3. Self Help Agent Escalation Summary & Diagnostic Insights",
+                f"* *Escalation Reason:* {escalation_summary.get('reason', '')}",
+                f"* *Steps Followed by Self Help Agent:* {escalation_summary.get('steps_followed', '')}",
+                f"* *Resolution Limitation (Why Self-Help Could Not Resolve):* {escalation_summary.get('resolution_limitation', '')}"
+            ])
 
     if device_info:
         dev_name = device_info.get("name") or device_info.get("deviceName", "Managed Device")
@@ -566,6 +594,10 @@ def list_jira_tickets(limit: int = 50) -> list[dict]:
                     except Exception:
                         pass
 
+            labels = fields.get("labels", [])
+            is_ticket_bot = ("Bot" in labels) or ("Auto-Remediation" in labels) or ("[Automated Remediation]" in fields.get("summary", ""))
+            default_assignee = "Bot" if is_ticket_bot else "Support Engineer"
+
             issues.append({
                 "id": issue.get("id"),
                 "key": issue.get("key"),
@@ -573,7 +605,7 @@ def list_jira_tickets(limit: int = 50) -> list[dict]:
                 "jiraUrl": f"{instance_url}/browse/{issue.get('key')}",
                 "summary": fields.get("summary", "Support Escalation"),
                 "status": fields.get("status", {}).get("name", "In Progress"),
-                "assignee": fields.get("assignee", {}).get("displayName") if fields.get("assignee") else "Support Engineer",
+                "assignee": fields.get("assignee", {}).get("displayName") if fields.get("assignee") else default_assignee,
                 "createdAt": fields.get("created"),
                 "updatedAt": fields.get("updated"),
                 "description": desc,
@@ -743,7 +775,8 @@ def set_jira_assignee(ticket_key: str, assignee_name: str) -> dict:
     headers = _get_auth_headers()
     if instance_url and headers:
         try:
-            labels = ["Support-Engineer", "L2-Escalated"] if "support" in assignee_name.lower() else ["Bot", "Auto-Remediation"]
+            is_bot_target = (assignee_name.strip().lower() == "bot")
+            labels = ["Bot", "Auto-Remediation", "Self-Help-Resolved"] if is_bot_target else ["Support-Engineer", "L2-Escalated"]
             requests.put(
                 f"{instance_url}/rest/api/3/issue/{ticket_key}",
                 headers=headers,

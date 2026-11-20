@@ -482,6 +482,12 @@ async def create_remediation_ticket(
     jira_service.transition_jira_ticket(jira_key, "In Progress")
     jira_service.set_jira_assignee(jira_key, "Bot")
 
+    clean_exec_details = execution_details or (
+        "• Remediation Action: Automated Zoom Cache & Process Purge\n"
+        "• Steps Followed: Executed automated remediation script on managed device via MeshCentral.\n"
+        "• Resolution Status: Resolved autonomously by Self Help Agent (Assignee: Bot)."
+    )
+
     esc_id = f"ESC-{session_id}-{uuid.uuid4().hex[:4].upper()}"
     ticket = {
         "id": esc_id,
@@ -496,7 +502,7 @@ async def create_remediation_ticket(
         "currentUsers": current_users,
         "issueSummary": issue_summary,
         "summary": issue_summary,
-        "executionDetails": execution_details,
+        "executionDetails": clean_exec_details,
         "sharingLink": "",
         "conversationId": cid,
         "chatLink": chat_link,
@@ -506,7 +512,7 @@ async def create_remediation_ticket(
         "linkExpiresAt": None,
         "expiresAt": None,
         "resolvedAt": None,
-        "notes": "Automated remote action initiated by Bot."
+        "notes": "Automated remote action initiated and resolved autonomously by Self Help Agent (Bot)."
     }
 
     escalation_store.insert(0, ticket)
