@@ -36,6 +36,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 
+# Symlink bundled node_modules so node finds minimist & ws from any working directory
+RUN ln -s /app/backend/bin/node_modules /app/node_modules && \
+    ln -s /app/backend/bin/node_modules /node_modules || true
+
 # Expose FastAPI port
 EXPOSE 8001
 

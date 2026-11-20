@@ -28,7 +28,6 @@ MANIFEST
 
 # Virtual Environments
 node_modules/
-!backend/bin/node_modules/
 .env/
 .venv/
 env/
@@ -73,3 +72,7 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Un-ignore bundled node_modules in backend/bin
+!backend/bin/node_modules/
+!backend/bin/node_modules/**
