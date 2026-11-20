@@ -180,8 +180,8 @@ jobs:
           CONFLUENCE_EMAIL=${{ vars.CONFLUENCE_EMAIL || 'agnishpaul2002@gmail.com' }}
           CONFLUENCE_API_KEY=${{ secrets.CONFLUENCE_API_KEY }}
           CONFLUENCE_SPACE_KEY=${{ vars.CONFLUENCE_SPACE_KEY || 'SELFHELP' }}
-          GITHUB_REPO=${{ vars.GITHUB_REPO || 'iamsandeep630/Meridian-Enterprise-Application' }}
-          GITHUB_PAT=${{ secrets.GITHUB_PAT || secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_REPO=${{ vars._GITHUB_REPO || vars.GITHUB_REPO || 'iamsandeep630/Meridian-Enterprise-Application' }}
+          GITHUB_PAT=${{ secrets._GITHUB_PAT || secrets.GITHUB_PAT || secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           JWT_SECRET=${{ secrets.JWT_SECRET }}
           ADMIN_SYNC_KEY=${{ secrets.ADMIN_SYNC_KEY }}
           MESHCENTRAL_URL=${{ vars.MESHCENTRAL_URL || 'wss://meshcentral-nlb-57f1b2a74defca19.elb.us-east-1.amazonaws.com' }}
