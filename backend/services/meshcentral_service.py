@@ -160,17 +160,40 @@ def list_managed_devices() -> dict:
                 json_str = json_str[start:end]
 
         devices_raw = json.loads(json_str)
+        if isinstance(devices_raw, dict):
+            if "devices" in devices_raw and isinstance(devices_raw["devices"], list):
+                raw_list = devices_raw["devices"]
+            elif "devices" in devices_raw and isinstance(devices_raw["devices"], dict):
+                raw_list = list(devices_raw["devices"].values())
+            else:
+                raw_list = list(devices_raw.values())
+        elif isinstance(devices_raw, list):
+            raw_list = devices_raw
+        else:
+            raw_list = []
+
         devices = []
-        for d in devices_raw:
-            devices.append({
-                "id": d.get("_id", ""),
-                "name": d.get("name", "Unknown Device"),
-                "os": d.get("osdesc", "Unknown OS"),
-                "ip": d.get("host") or d.get("ip") or "Unknown",
-                "status": "Online" if d.get("conn") == 1 else "Offline",
-                "conn": d.get("conn", 0),
-                "currentUsers": d.get("users", [])
-            })
+        for d in raw_list:
+            if isinstance(d, dict):
+                devices.append({
+                    "id": d.get("_id", "") or d.get("id", ""),
+                    "name": d.get("name", "Unknown Device"),
+                    "os": d.get("osdesc", "Unknown OS"),
+                    "ip": d.get("host") or d.get("ip") or "Unknown",
+                    "status": "Online" if d.get("conn") == 1 else "Offline",
+                    "conn": d.get("conn", 0),
+                    "currentUsers": d.get("users", [])
+                })
+            elif isinstance(d, str):
+                devices.append({
+                    "id": d,
+                    "name": d,
+                    "os": "Unknown OS",
+                    "ip": "Unknown",
+                    "status": "Online",
+                    "conn": 1,
+                    "currentUsers": []
+                })
         return {"success": True, "devices": devices}
     except Exception as e:
         return {"success": False, "devices": [], "error": str(e)}
@@ -181,39 +204,43 @@ def find_device(devices: list[dict], identifier: str | None = None, query: str |
     target = query if identifier is None else identifier
     if not devices:
         return None
-    if not target:
-        online = [d for d in devices if d.get("conn") == 1 or d.get("status") == "Online"]
-        return online[0] if online else devices[0]
+    valid_devices = [d for d in devices if isinstance(d, dict)]
+    if not valid_devices:
+        return None
+
+    if not target or target in ("default", "maya-laptop", "None"):
+        online = [d for d in valid_devices if d.get("conn") == 1 or d.get("status") == "Online"]
+        return online[0] if online else valid_devices[0]
 
     id_str = str(target).strip().lower()
 
     # 1. Exact node ID match
-    for d in devices:
+    for d in valid_devices:
         if d.get("_id") == target or d.get("id") == target:
             return d
 
     # 2. Exact name match
-    for d in devices:
+    for d in valid_devices:
         if d.get("name") and d.get("name").lower() == id_str:
             return d
 
     # 3. Logged-in user match
-    for d in devices:
+    for d in valid_devices:
         users = d.get("users", []) or d.get("currentUsers", [])
-        if any(id_str in u.lower() for u in users):
+        if any(id_str in str(u).lower() for u in users):
             return d
 
     # 4. Substring name match
-    for d in devices:
+    for d in valid_devices:
         if d.get("name") and id_str in d.get("name").lower():
             return d
 
     # 5. Fallback to first online connected device, or first device
-    online = [d for d in devices if d.get("conn") == 1 or d.get("status") == "Online"]
+    online = [d for d in valid_devices if d.get("conn") == 1 or d.get("status") == "Online"]
     if online:
         return online[0]
 
-    return devices[0]
+    return valid_devices[0]
 
 
 def get_device_info(device_id: str | None = None) -> dict:
@@ -238,7 +265,8 @@ def clear_zoom_cache(device_id: str | None = None, computer_name: str | None = N
     try:
         dev_res = list_managed_devices()
         if not dev_res.get("success") or not dev_res.get("devices"):
-            return {"success": False, "error": "No managed devices found in MeshCentral"}
+            err_detail = dev_res.get("error", "No devices found")
+            return {"success": False, "error": f"No managed devices found in MeshCentral ({err_detail})"}
 
         target_id = device_id or computer_name
         device = find_device(dev_res["devices"], target_id)
@@ -377,7 +405,8 @@ def create_device_sharing_link(device_id: str | None = None, duration_minutes: i
     try:
         dev_res = list_managed_devices()
         if not dev_res.get("success") or not dev_res.get("devices"):
-            return {"success": False, "error": "No managed devices found in MeshCentral"}
+            err_detail = dev_res.get("error", "No devices found")
+            return {"success": False, "error": f"No managed devices found in MeshCentral ({err_detail})"}
 
         device = find_device(dev_res["devices"], device_id)
         if not device:
@@ -443,7 +472,8 @@ def uninstall_zoom(device_id: str | None = None) -> dict:
     try:
         dev_res = list_managed_devices()
         if not dev_res.get("success") or not dev_res.get("devices"):
-            return {"success": False, "error": "No managed devices found in MeshCentral"}
+            err_detail = dev_res.get("error", "No devices found")
+            return {"success": False, "error": f"No managed devices found in MeshCentral ({err_detail})"}
 
         device = find_device(dev_res["devices"], device_id)
         if not device:
@@ -493,7 +523,8 @@ def reinstall_zoom(device_id: str | None = None) -> dict:
     try:
         dev_res = list_managed_devices()
         if not dev_res.get("success") or not dev_res.get("devices"):
-            return {"success": False, "error": "No managed devices found in MeshCentral"}
+            err_detail = dev_res.get("error", "No devices found")
+            return {"success": False, "error": f"No managed devices found in MeshCentral ({err_detail})"}
 
         device = find_device(dev_res["devices"], device_id)
         if not device:
