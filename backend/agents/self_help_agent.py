@@ -599,15 +599,19 @@ class SelfHelpAgent:
         
         is_zoom_issue = False
         if history:
+            user_texts = " ".join([
+                (m.content if hasattr(m, "content") else m.get("content", "")).lower()
+                for m in history
+                if (hasattr(m, "role") and m.role == "user") or (isinstance(m, dict) and m.get("role") == "user")
+            ])
             all_history_text = " ".join([
                 (m.content if hasattr(m, "content") else m.get("content", "")).lower()
                 for m in history
             ])
-            is_zoom_issue = "zoom" in all_history_text
+            is_zoom_issue = ("zoom" in user_texts) or ("zoom" in all_history_text)
             
-            privacy_keywords = ["privacy settings", "privacy permissions", "camera privacy", 
-                               "privacy controls", "windows settings", "camera settings"]
-            if any(keyword in all_history_text for keyword in privacy_keywords):
+            # Disqualify only if user query is strictly about camera/mic privacy without Zoom app issues
+            if any(keyword in user_texts for keyword in ["privacy settings", "camera privacy", "microphone privacy"]) and "zoom" not in user_texts:
                 is_zoom_issue = False
         
         if not is_zoom_issue:
