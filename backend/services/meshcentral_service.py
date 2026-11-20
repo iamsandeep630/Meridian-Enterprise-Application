@@ -160,21 +160,21 @@ def list_managed_devices() -> dict:
                 json_str = json_str[start:end]
 
         devices_raw = json.loads(json_str)
-        if isinstance(devices_raw, dict):
-            if "devices" in devices_raw and isinstance(devices_raw["devices"], list):
-                raw_list = devices_raw["devices"]
-            elif "devices" in devices_raw and isinstance(devices_raw["devices"], dict):
-                raw_list = list(devices_raw["devices"].values())
-            else:
-                raw_list = list(devices_raw.values())
-        elif isinstance(devices_raw, list):
+        raw_list = []
+        if isinstance(devices_raw, list):
             raw_list = devices_raw
-        else:
-            raw_list = []
+        elif isinstance(devices_raw, dict):
+            if "_id" in devices_raw or "name" in devices_raw:
+                raw_list = [devices_raw]
+            elif "devices" in devices_raw:
+                devs = devices_raw["devices"]
+                raw_list = devs if isinstance(devs, list) else list(devs.values())
+            else:
+                raw_list = [v for v in devices_raw.values() if isinstance(v, dict)]
 
         devices = []
         for d in raw_list:
-            if isinstance(d, dict):
+            if isinstance(d, dict) and (d.get("_id") or d.get("id") or d.get("name")):
                 devices.append({
                     "id": d.get("_id", "") or d.get("id", ""),
                     "name": d.get("name", "Unknown Device"),
@@ -183,16 +183,6 @@ def list_managed_devices() -> dict:
                     "status": "Online" if d.get("conn") == 1 else "Offline",
                     "conn": d.get("conn", 0),
                     "currentUsers": d.get("users", [])
-                })
-            elif isinstance(d, str):
-                devices.append({
-                    "id": d,
-                    "name": d,
-                    "os": "Unknown OS",
-                    "ip": "Unknown",
-                    "status": "Online",
-                    "conn": 1,
-                    "currentUsers": []
                 })
         return {"success": True, "devices": devices}
     except Exception as e:
